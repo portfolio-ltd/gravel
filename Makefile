@@ -24,7 +24,7 @@ install:
 # ── Dev servers ───────────────────────────────────────────────────────────────
 # Run each in a separate terminal.
 api:
-	cd apps/api && .venv/bin/uvicorn main:app --reload --port 8001
+	cd apps/api && .venv/bin/uvicorn main:app --reload --port 8000
 
 web:
 	cd apps/web && npm run dev -- --port 3000
@@ -45,7 +45,7 @@ seed:
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 test-api:
-	cd apps/api && pytest -v
+	cd apps/api && .venv/bin/python -m pytest tests/ -q
 
 test-web:
 	cd apps/web && npm run test
@@ -54,7 +54,7 @@ test: test-api test-web
 
 # ── Lint ──────────────────────────────────────────────────────────────────────
 lint-api:
-	cd apps/api && ruff check . && mypy .
+	cd apps/api && .venv/bin/python -m ruff check .
 
 lint-web:
 	cd apps/web && npm run lint

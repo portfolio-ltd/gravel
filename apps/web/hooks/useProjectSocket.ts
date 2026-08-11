@@ -34,6 +34,18 @@ export function useProjectSocket(projectId: string | null) {
         case "agent.progress":
           qc.invalidateQueries({ queryKey: ["project", projectId] })
           break
+        case "task_run.outcome":
+          // A run hit an approval gate or got blocked — refresh attention surfaces
+          qc.invalidateQueries({ queryKey: ["attention-tasks"] })
+          qc.invalidateQueries({ queryKey: ["metrics"] })
+          qc.invalidateQueries({ queryKey: ["board"] })
+          if (typeof msg.task_id === "string") {
+            qc.invalidateQueries({ queryKey: ["task-runs", msg.task_id] })
+          }
+          break
+        case "engineer.heartbeat":
+          qc.invalidateQueries({ queryKey: ["engineers"] })
+          break
       }
     })
 

@@ -1,11 +1,12 @@
 import asyncio
-import sys
 import os
+import sys
 from logging.config import fileConfig
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
+
 from alembic import context
 
 # Add apps/api to sys.path so imports resolve
@@ -13,7 +14,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from config import settings
 from db.base import Base
-import models  # noqa: ensures all models are imported
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
@@ -50,10 +50,14 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
+    connect_args = {}
+    if not IS_SQLITE and settings.DATABASE_SSL:
+        connect_args = {"ssl": settings.DATABASE_SSL}
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

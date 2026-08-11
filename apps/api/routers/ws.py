@@ -1,14 +1,14 @@
 import json
 import logging
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from sqlalchemy.orm import selectinload
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from db.session import AsyncSessionLocal
 from models.project import Project
-from services.auth import decode_access_token, get_user_by_id
 from services import ws_manager
+from services.auth import decode_access_token, get_user_by_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["websocket"])

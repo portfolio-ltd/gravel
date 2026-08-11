@@ -3,8 +3,10 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Zap, LayoutDashboard, Users, Settings, LogOut, Menu, X, ChevronDown, Key, Bell, Shield, Plug } from "lucide-react"
+import { Zap, LayoutDashboard, Users, Settings, LogOut, Menu, X, ChevronDown, Key, Bell, Shield, Plug, Kanban, Bot, AlertTriangle, GitBranch, FileText } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
+import { useAttentionTasks } from "@/hooks/useBoard"
+import OrgSwitcher from "@/components/OrgSwitcher"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown"
@@ -20,6 +22,11 @@ const ROLE_COLORS: Record<string, string> = {
 
 const NAV = [
   { to: "/projects",     icon: <LayoutDashboard className="w-4 h-4" />, label: "Projects" },
+  { to: "/board",        icon: <Kanban className="w-4 h-4" />,          label: "Board" },
+  { to: "/prds",         icon: <FileText className="w-4 h-4" />,        label: "PRDs" },
+  { to: "/workflows",    icon: <GitBranch className="w-4 h-4" />,       label: "Workflows" },
+  { to: "/engineers",    icon: <Bot className="w-4 h-4" />,             label: "Engineers" },
+  { to: "/attention",    icon: <AlertTriangle className="w-4 h-4" />,   label: "Attention", showBadge: true },
   { to: "/users",        icon: <Users className="w-4 h-4" />,           label: "Team",         adminOnly: true },
   { to: "/integrations", icon: <Plug className="w-4 h-4" />,            label: "Integrations" },
   { to: "/settings",     icon: <Settings className="w-4 h-4" />,        label: "Settings" },
@@ -30,6 +37,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { data: attentionTasks } = useAttentionTasks()
+  const blockedCount = attentionTasks?.length ?? 0
 
   async function handleLogout() {
     await logout()
@@ -49,29 +58,40 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 hidden sm:inline">Beta</span>
         </Link>
 
+        <div className="hidden md:block">
+          <OrgSwitcher />
+        </div>
+
         <nav className="hidden sm:flex items-center gap-1 ml-4">
           {visibleNav.map((n) => (
             <Link
               key={n.to}
               href={n.to}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                "relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
                 pathname === n.to || (n.to !== "/projects" && pathname.startsWith(n.to))
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted"
               )}
             >
               {n.icon} {n.label}
+              {n.showBadge && blockedCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center">
+                  {blockedCount > 99 ? "99+" : blockedCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>
 
         <div className="flex-1" />
 
-        <button className="relative p-2 rounded-lg hover:bg-muted transition-colors">
+        <Link href="/attention" className="relative p-2 rounded-lg hover:bg-muted transition-colors">
           <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />
-        </button>
+          {blockedCount > 0 && (
+            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-destructive" />
+          )}
+        </Link>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -123,11 +143,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 href={n.to}
                 onClick={() => setMobileOpen(false)}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                  "relative flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                   pathname === n.to ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 )}
               >
                 {n.icon} {n.label}
+                {n.showBadge && blockedCount > 0 && (
+                  <span className="ml-auto min-w-[18px] h-4.5 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center">
+                    {blockedCount}
+                  </span>
+                )}
               </Link>
             ))}
             <button

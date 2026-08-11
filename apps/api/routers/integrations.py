@@ -1,14 +1,21 @@
 import json
+
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 
-from dependencies import CurrentUser, DB
-from models.integration import GitIntegration, DeployEnvironment
-from schemas.integration import (
-    GitIntegrationCreate, GitIntegrationUpdate, GitIntegrationOut,
-    DeployEnvCreate, DeployEnvUpdate, DeployEnvOut,
-)
 from config import settings
+from dependencies import DB, CurrentOrg, CurrentUser
+from models.integration import DeployEnvironment, GitIntegration
+from schemas.integration import (
+    DeployEnvCreate,
+    DeployEnvOut,
+    DeployEnvUpdate,
+    GitIntegrationCreate,
+    GitIntegrationOut,
+    GitIntegrationUpdate,
+)
+from services import github as github_svc
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
@@ -54,15 +61,16 @@ def _deploy_out(row: DeployEnvironment) -> DeployEnvOut:
 # ── Git integrations ──────────────────────────────────────────────────────────
 
 @router.get("/git", response_model=list[GitIntegrationOut])
-async def list_git(user: CurrentUser, db: DB):
-    rows = await db.scalars(select(GitIntegration).where(GitIntegration.owner_id == user.id))
+async def list_git(user: CurrentUser, org: CurrentOrg, db: DB):
+    rows = await db.scalars(select(GitIntegration).where(GitIntegration.organization_id == org.id))
     return [_git_out(r) for r in rows.all()]
 
 
 @router.post("/git", response_model=GitIntegrationOut, status_code=201)
-async def create_git(body: GitIntegrationCreate, user: CurrentUser, db: DB):
+async def create_git(body: GitIntegrationCreate, user: CurrentUser, org: CurrentOrg, db: DB):
     row = GitIntegration(
         owner_id=user.id,
+        organization_id=org.id,
         provider=body.provider,
         name=body.name,
         base_url=body.base_url,
@@ -76,9 +84,9 @@ async def create_git(body: GitIntegrationCreate, user: CurrentUser, db: DB):
 
 
 @router.patch("/git/{integration_id}", response_model=GitIntegrationOut)
-async def update_git(integration_id: str, body: GitIntegrationUpdate, user: CurrentUser, db: DB):
+async def update_git(integration_id: str, body: GitIntegrationUpdate, user: CurrentUser, org: CurrentOrg, db: DB):
     row = await db.get(GitIntegration, integration_id)
-    if not row or row.owner_id != user.id:
+    if not row or row.organization_id != org.id:
         raise HTTPException(404, "Integration not found")
     if body.name is not None:           row.name = body.name
     if body.base_url is not None:       row.base_url = body.base_url
@@ -92,9 +100,9 @@ async def update_git(integration_id: str, body: GitIntegrationUpdate, user: Curr
 
 
 @router.delete("/git/{integration_id}", status_code=204)
-async def delete_git(integration_id: str, user: CurrentUser, db: DB):
+async def delete_git(integration_id: str, user: CurrentUser, org: CurrentOrg, db: DB):
     row = await db.get(GitIntegration, integration_id)
-    if not row or row.owner_id != user.id:
+    if not row or row.organization_id != org.id:
         raise HTTPException(404, "Integration not found")
     await db.delete(row)
     await db.commit()
@@ -103,15 +111,16 @@ async def delete_git(integration_id: str, user: CurrentUser, db: DB):
 # ── Deploy environments ────────────────────────────────────────────────────────
 
 @router.get("/deploy", response_model=list[DeployEnvOut])
-async def list_deploy(user: CurrentUser, db: DB):
-    rows = await db.scalars(select(DeployEnvironment).where(DeployEnvironment.owner_id == user.id))
+async def list_deploy(user: CurrentUser, org: CurrentOrg, db: DB):
+    rows = await db.scalars(select(DeployEnvironment).where(DeployEnvironment.organization_id == org.id))
     return [_deploy_out(r) for r in rows.all()]
 
 
 @router.post("/deploy", response_model=DeployEnvOut, status_code=201)
-async def create_deploy(body: DeployEnvCreate, user: CurrentUser, db: DB):
+async def create_deploy(body: DeployEnvCreate, user: CurrentUser, org: CurrentOrg, db: DB):
     row = DeployEnvironment(
         owner_id=user.id,
+        organization_id=org.id,
         project_id=body.project_id,
         name=body.name,
         provider=body.provider,
@@ -125,9 +134,9 @@ async def create_deploy(body: DeployEnvCreate, user: CurrentUser, db: DB):
 
 
 @router.patch("/deploy/{env_id}", response_model=DeployEnvOut)
-async def update_deploy(env_id: str, body: DeployEnvUpdate, user: CurrentUser, db: DB):
+async def update_deploy(env_id: str, body: DeployEnvUpdate, user: CurrentUser, org: CurrentOrg, db: DB):
     row = await db.get(DeployEnvironment, env_id)
-    if not row or row.owner_id != user.id:
+    if not row or row.organization_id != org.id:
         raise HTTPException(404, "Environment not found")
     if body.name is not None:   row.name = body.name
     if body.region is not None: row.region = body.region
@@ -140,9 +149,97 @@ async def update_deploy(env_id: str, body: DeployEnvUpdate, user: CurrentUser, d
 
 
 @router.delete("/deploy/{env_id}", status_code=204)
-async def delete_deploy(env_id: str, user: CurrentUser, db: DB):
+async def delete_deploy(env_id: str, user: CurrentUser, org: CurrentOrg, db: DB):
     row = await db.get(DeployEnvironment, env_id)
-    if not row or row.owner_id != user.id:
+    if not row or row.organization_id != org.id:
         raise HTTPException(404, "Environment not found")
     await db.delete(row)
     await db.commit()
+
+
+# ── GitHub helpers ──────────────────────────────────────────────────────────────
+
+class BranchRequest(BaseModel):
+    repo_url: str
+    branch_name: str
+    base_branch: str = "main"
+
+
+class PRRequest(BaseModel):
+    repo_url: str
+    title: str
+    body: str
+    head: str
+    base: str = "main"
+
+
+@router.get("/git/{integration_id}/verify")
+async def verify_github(integration_id: str, user: CurrentUser, org: CurrentOrg, db: DB, repo_url: str | None = None):
+    row = await db.get(GitIntegration, integration_id)
+    if not row or row.organization_id != org.id:
+        raise HTTPException(404, "Integration not found")
+    if not row.access_token_encrypted:
+        raise HTTPException(400, "No token configured")
+    token = _decrypt(row.access_token_encrypted)
+    target = repo_url or row.base_url
+    if not target:
+        raise HTTPException(400, "No repo URL configured — pass ?repo_url=https://github.com/owner/repo")
+    return await github_svc.verify_access(target, token)
+
+
+@router.post("/git/{integration_id}/branch")
+async def create_branch(integration_id: str, body: BranchRequest, user: CurrentUser, org: CurrentOrg, db: DB):
+    row = await db.get(GitIntegration, integration_id)
+    if not row or row.organization_id != org.id:
+        raise HTTPException(404, "Integration not found")
+    token = _decrypt(row.access_token_encrypted)
+    return await github_svc.create_branch(body.repo_url, token, body.branch_name, body.base_branch)
+
+
+@router.post("/git/{integration_id}/pr")
+async def create_pr(integration_id: str, body: PRRequest, user: CurrentUser, org: CurrentOrg, db: DB):
+    row = await db.get(GitIntegration, integration_id)
+    if not row or row.organization_id != org.id:
+        raise HTTPException(404, "Integration not found")
+    token = _decrypt(row.access_token_encrypted)
+    return await github_svc.create_pull_request(body.repo_url, token, body.title, body.body, body.head, body.base)
+
+
+# ── AWS deployment ──────────────────────────────────────────────────────────────
+
+class DeployRequest(BaseModel):
+    build_path: str
+    prefix: str = ""
+    invalidate_paths: list[str] | None = None
+
+
+@router.post("/deploy/{environment_id}/deploy")
+async def deploy_environment(environment_id: str, body: DeployRequest, user: CurrentUser, org: CurrentOrg, db: DB):
+    """Upload a local build directory to the environment's S3 bucket and
+    invalidate its CloudFront distribution (config keys: bucket,
+    distribution_id, access_key_id, secret_access_key, region)."""
+    from services import deployment as deploy_svc
+
+    row = await db.get(DeployEnvironment, environment_id)
+    if not row or row.organization_id != org.id:
+        raise HTTPException(404, "Deploy environment not found")
+    if not row.config_encrypted:
+        raise HTTPException(400, "No deployment config stored for this environment")
+    cfg = json.loads(_decrypt(row.config_encrypted))
+    bucket = cfg.get("bucket")
+    if not bucket:
+        raise HTTPException(400, "Deployment config is missing 'bucket'")
+
+    region = row.region or cfg.get("region", "us-east-1")
+    result = await deploy_svc.deploy_to_s3(
+        body.build_path, bucket,
+        cfg.get("access_key_id", ""), cfg.get("secret_access_key", ""),
+        region=region, prefix=body.prefix,
+    )
+    if result.get("ok") and cfg.get("distribution_id"):
+        result["invalidation"] = await deploy_svc.invalidate_cloudfront(
+            cfg["distribution_id"],
+            cfg.get("access_key_id", ""), cfg.get("secret_access_key", ""),
+            region=region, paths=body.invalidate_paths,
+        )
+    return result

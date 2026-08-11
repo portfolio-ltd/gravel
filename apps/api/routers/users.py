@@ -1,13 +1,19 @@
-from fastapi import APIRouter, HTTPException
-from dependencies import CurrentUser, DB, require_roles
-from models.user import User, UserRole
-from schemas.user import UserOut, UserUpdate, ApiKeysIn, ApiKeysMasked, InviteUserRequest
-from services.auth import hash_password, get_user_by_email
-from services.users import (
-    list_users, get_user, update_user, deactivate_user,
-    save_api_keys, get_masked_keys,
-)
 import secrets
+
+from fastapi import APIRouter, HTTPException
+
+from dependencies import DB, CurrentUser, require_roles
+from models.user import User, UserRole
+from schemas.user import ApiKeysIn, ApiKeysMasked, InviteUserRequest, UserOut, UserUpdate
+from services.auth import get_user_by_email, hash_password
+from services.users import (
+    deactivate_user,
+    get_masked_keys,
+    get_user,
+    list_users,
+    save_api_keys,
+    update_user,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -65,6 +71,8 @@ async def invite_user(body: InviteUserRequest, db: DB, _: User = AdminOnly):  # 
     )
     db.add(user)
     await db.flush()
+    from services.organizations import ensure_personal_org
+    await ensure_personal_org(db, user)
     return user
 
 

@@ -1,11 +1,13 @@
 """
 PRD parser: reads PRD text and calls LLM to extract a structured task list.
-Returns list of {title, description, priority, type} dicts.
+Returns (list of {title, description, priority, type} dicts, LLMResult | None).
 """
 import json
 import logging
 import re
 from pathlib import Path
+
+from services.llm import LLMResult, call_llm, pick_provider
 
 logger = logging.getLogger(__name__)
 
@@ -40,44 +42,31 @@ async def parse_prd(
     prd_file_path: str,
     model: str,
     keys: dict,
-) -> list[dict]:
-    prd_text = _read_prd(prd_file_path)
+) -> tuple[list[dict], LLMResult | None]:
+    """File-reading wrapper around parse_prd_text."""
+    return await parse_prd_text(_read_prd(prd_file_path), model, keys)
+
+
+async def parse_prd_text(
+    prd_text: str,
+    model: str,
+    keys: dict,
+) -> tuple[list[dict], LLMResult | None]:
     if not prd_text:
-        return _fallback_tasks()
+        return _fallback_tasks(), None
 
-    provider = _pick_provider(keys, model)
+    provider = pick_provider(keys, model)
     if provider is None:
-        return _fallback_tasks()
+        return _fallback_tasks(), None
 
-    prompt = PARSE_PROMPT.format(prd_text=prd_text)
-    raw = ""
+    prompt = PARSE_PROMPT.format(prd_text=prd_text[:8000])
     try:
-        if provider == "anthropic":
-            import anthropic
-            client = anthropic.AsyncAnthropic(api_key=keys["anthropic"])
-            msg = await client.messages.create(
-                model=model, max_tokens=2000,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            raw = msg.content[0].text
-
-        elif provider == "openai":
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=keys["openai"])
-            resp = await client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=2000,
-                response_format={"type": "json_object"},
-            )
-            raw = resp.choices[0].message.content or ""
-
-        tasks = _extract_json(raw)
-        return tasks if tasks else _fallback_tasks()
-
+        result = await call_llm(provider, model, keys, prompt, max_tokens=2000)
+        tasks = _extract_json(result.text)
+        return (tasks if tasks else _fallback_tasks()), result
     except Exception as e:
         logger.warning("PRD parse failed: %s", e)
-        return _fallback_tasks()
+        return _fallback_tasks(), None
 
 
 def _extract_json(text: str) -> list[dict] | None:
@@ -94,18 +83,6 @@ def _extract_json(text: str) -> list[dict] | None:
                     return v
     except Exception:
         pass
-    return None
-
-
-def _pick_provider(keys: dict, model: str) -> str | None:
-    if model.startswith("claude") and keys.get("anthropic"):
-        return "anthropic"
-    if model.startswith("gpt") and keys.get("openai"):
-        return "openai"
-    if keys.get("anthropic"):
-        return "anthropic"
-    if keys.get("openai"):
-        return "openai"
     return None
 
 

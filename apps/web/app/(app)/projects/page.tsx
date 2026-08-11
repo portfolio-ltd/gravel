@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Plus, Zap, Play, Wifi, WifiOff, FolderOpen, MoreHorizontal, Trash2, RefreshCw, ChevronRight } from "lucide-react"
+import { useState, useRef } from "react"
+import { Plus, Zap, Play, Wifi, WifiOff, FolderOpen, MoreHorizontal, Trash2, RefreshCw, ChevronRight, Upload, FileText, Loader2, GitBranch } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -11,10 +11,12 @@ import WorkflowStepper from "@/components/WorkflowStepper"
 import TaskCard from "@/components/TaskCard"
 import ChangelogItem from "@/components/ChangelogItem"
 import CreateProjectDialog from "@/components/CreateProjectDialog"
-import { useProjects, useProject, useDeleteProject, useAdvanceProject } from "@/hooks/useProjects"
+import WorkspaceMetrics from "@/components/WorkspaceMetrics"
+import { useProjects, useProject, useDeleteProject, useAdvanceProject, useUpdateProject } from "@/hooks/useProjects"
+import { useWorkflows } from "@/hooks/useWorkflows"
 import { useTasks, useUpdateTask, useDeleteTask } from "@/hooks/useTasks"
 import { useProjectSocket } from "@/hooks/useProjectSocket"
-import { useRunAgent } from "@/hooks/useAgent"
+import { useRunAgent, useUploadFile, useParseAgent } from "@/hooks/useAgent"
 import { useAuth } from "@/contexts/AuthContext"
 import { cn, formatRelativeTime } from "@/lib/utils"
 import { toast } from "sonner"
@@ -35,6 +37,110 @@ const STATUS_LABELS: Record<string, string> = {
 
 const CAN_RUN: Record<string, boolean> = { running: true, qa: true, review: true }
 const CAN_ADVANCE: Record<string, boolean> = { setup: true, running: true, qa: true, review: true, done: true }
+
+function WorkflowCard({ project }: { project: Project }) {
+  const updateProject = useUpdateProject(project.id)
+  const { data: workflows } = useWorkflows()
+  const attached = workflows?.find((w) => w.id === project.workflow_id)
+
+  async function handleChange(value: string) {
+    try {
+      await updateProject.mutateAsync({ workflow_id: value || null })
+      toast.success(value ? "Workflow attached" : "Workflow detached — default pipeline")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to change workflow")
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 mb-6 gap-3">
+      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+        <GitBranch className="w-4 h-4 text-muted-foreground shrink-0 rotate-90" />
+        <div className="min-w-0">
+          <p className="text-xs font-medium">Workflow</p>
+          <p className="text-[10px] text-muted-foreground truncate max-w-[280px]">
+            {attached
+              ? `${attached.name} · ${attached.stages.map((s) => s.name).join(" → ")}`
+              : "Default pipeline: groom → build → test → deploy"}
+          </p>
+        </div>
+      </div>
+      <select
+        value={project.workflow_id ?? ""}
+        onChange={(e) => handleChange(e.target.value)}
+        disabled={updateProject.isPending}
+        className="text-xs px-2 py-1.5 rounded-lg border bg-background shrink-0 max-w-[180px]"
+      >
+        <option value="">Default pipeline</option>
+        {(workflows ?? []).map((wf) => (
+          <option key={wf.id} value={wf.id}>{wf.name}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+function RepoCard({ project }: { project: Project }) {
+  const updateProject = useUpdateProject(project.id)
+  const [editing, setEditing] = useState(false)
+  const [repoUrl, setRepoUrl] = useState(project.repo_url ?? "")
+  const [branch, setBranch] = useState(project.default_branch ?? "main")
+
+  async function handleSave() {
+    try {
+      await updateProject.mutateAsync({ repo_url: repoUrl || null, default_branch: branch || "main" })
+      toast.success("Repository settings saved")
+      setEditing(false)
+    } catch {
+      toast.error("Failed to save repository settings")
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 mb-6 gap-3">
+      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+        <GitBranch className="w-4 h-4 text-muted-foreground shrink-0" />
+        {editing ? (
+          <div className="flex gap-2 flex-1 min-w-0">
+            <input
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+              className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded-lg border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+            />
+            <input
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              placeholder="main"
+              className="w-24 text-xs px-2 py-1.5 rounded-lg border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+            />
+          </div>
+        ) : (
+          <div className="min-w-0">
+            <p className="text-xs font-medium">Repository</p>
+            <p className="text-[10px] text-muted-foreground truncate max-w-[280px] font-mono">
+              {project.repo_url ? `${project.repo_url} · ${project.default_branch}` : "No repo connected — engineers will work without code access"}
+            </p>
+          </div>
+        )}
+      </div>
+      <div className="flex gap-2 shrink-0">
+        {editing ? (
+          <>
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="sm" onClick={handleSave} disabled={updateProject.isPending}>
+              {updateProject.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Save
+            </Button>
+          </>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+            {project.repo_url ? "Edit" : "Connect repo"}
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function ProjectRow({ project, selected, onSelect }: { project: Project; selected: boolean; onSelect: () => void }) {
   const deleteProject = useDeleteProject()
@@ -98,8 +204,11 @@ function ProjectDetail({ projectId }: { projectId: string }) {
   const deleteTask = useDeleteTask(projectId)
   const advanceProject = useAdvanceProject(projectId)
   const runAgent = useRunAgent()
+  const uploadFile = useUploadFile()
+  const parseAgent = useParseAgent()
   const { connected } = useProjectSocket(projectId)
   const { user } = useAuth()
+  const prdInputRef = useRef<HTMLInputElement>(null)
 
   if (isLoading || !project) {
     return (
@@ -129,6 +238,27 @@ function ProjectDetail({ projectId }: { projectId: string }) {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to start agent"
       toast.error(message)
+    }
+  }
+
+  async function handlePrdFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ""
+    try {
+      await uploadFile.mutateAsync({ projectId, file, fileType: "prd" })
+      toast.success("PRD uploaded")
+    } catch {
+      toast.error("Failed to upload PRD")
+    }
+  }
+
+  async function handleParsePrd() {
+    try {
+      const result = await parseAgent.mutateAsync({ project_id: projectId, model: project?.default_model }) as { tasks: Array<unknown> }
+      toast.success(`${result.tasks.length} tasks generated`)
+    } catch {
+      toast.error("Failed to parse PRD")
     }
   }
 
@@ -182,6 +312,56 @@ function ProjectDetail({ projectId }: { projectId: string }) {
       <div className="bg-muted/50 rounded-2xl p-4 mb-6">
         <WorkflowStepper status={project.status} />
       </div>
+
+      {/* PRD section */}
+      <div className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 mb-6">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+          <div className="min-w-0">
+            <p className="text-xs font-medium">Product Requirements</p>
+            <p className="text-[10px] text-muted-foreground truncate max-w-[220px]">
+              {project.prd_file_path ? project.prd_file_path.split("/").pop() : "No PRD attached"}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          {project.prd_file_path && (
+            <Button
+              size="sm" variant="outline"
+              onClick={handleParsePrd}
+              disabled={parseAgent.isPending}
+            >
+              {parseAgent.isPending
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Zap className="w-3.5 h-3.5" />}
+              Parse
+            </Button>
+          )}
+          <Button
+            size="sm" variant="outline"
+            onClick={() => prdInputRef.current?.click()}
+            disabled={uploadFile.isPending}
+          >
+            {uploadFile.isPending
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Upload className="w-3.5 h-3.5" />}
+            {project.prd_file_path ? "Replace" : "Upload PRD"}
+          </Button>
+        </div>
+        <input
+          ref={prdInputRef}
+          type="file"
+          className="hidden"
+          accept=".pdf,.md,.txt"
+          onChange={handlePrdFileChange}
+        />
+      </div>
+
+      {/* Repository */}
+      <RepoCard project={project} />
+
+      {/* Workflow */}
+      <WorkflowCard project={project} />
 
       {/* Progress bar */}
       <div className="mb-6">
@@ -297,7 +477,14 @@ export default function ProjectsPage() {
 
       {/* Detail panel */}
       {activeId ? (
-        <ProjectDetail projectId={activeId} />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="px-6 pt-5">
+            <WorkspaceMetrics />
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <ProjectDetail projectId={activeId} />
+          </div>
+        </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center text-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center">

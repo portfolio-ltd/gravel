@@ -3,18 +3,19 @@ Seed script: creates demo users + 2 sample projects with tasks & changelog.
 Run: python seed.py (from apps/api directory)
 """
 import asyncio
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from db.session import AsyncSessionLocal, engine
-from db.base import Base
 import models  # noqa
-from models.user import User, UserRole
-from models.project import Project, ProjectStatus
-from models.task import Task, TaskStatus, TaskPriority, TaskType
+from db.base import Base
+from db.session import AsyncSessionLocal, engine
 from models.changelog import ChangelogEntry, ChangelogType
+from models.engineer import Engineer, EngineerStatus
+from models.project import Project, ProjectStatus
+from models.task import Task, TaskPriority, TaskStatus, TaskType
+from models.user import User, UserRole
 from services.auth import hash_password
 
 DEMO_PASSWORD = "demo1234"
@@ -58,10 +59,17 @@ async def seed():
 
         admin = created_users["admin@gravel.dev"]
 
+        # ── Personal organizations ───────────────────────────────────────────
+        from services.organizations import ensure_personal_org
+        orgs = {}
+        for email, u in created_users.items():
+            orgs[email] = await ensure_personal_org(db, u)
+        admin_org = orgs["admin@gravel.dev"]
+
         # ── Project 1: Customer Dashboard v2 ──────────────────────────────
         result = await db.execute(select(Project).where(Project.name == "Customer Dashboard v2"))
         if not result.scalar_one_or_none():
-            p1 = Project(name="Customer Dashboard v2", status=ProjectStatus.review, progress=72, owner_id=admin.id)
+            p1 = Project(name="Customer Dashboard v2", status=ProjectStatus.review, progress=72, owner_id=admin.id, organization_id=admin_org.id)
             db.add(p1)
             await db.flush()
 
@@ -90,7 +98,7 @@ async def seed():
         # ── Project 2: Mobile Auth Redesign ───────────────────────────────
         result = await db.execute(select(Project).where(Project.name == "Mobile Auth Redesign"))
         if not result.scalar_one_or_none():
-            p2 = Project(name="Mobile Auth Redesign", status=ProjectStatus.running, progress=38, owner_id=admin.id)
+            p2 = Project(name="Mobile Auth Redesign", status=ProjectStatus.running, progress=38, owner_id=admin.id, organization_id=admin_org.id)
             db.add(p2)
             await db.flush()
 
@@ -110,6 +118,54 @@ async def seed():
             for c in changelog2:
                 db.add(c)
             print("  created project: Mobile Auth Redesign")
+
+        # ── Engineers ─────────────────────────────────────────────────────────
+        result = await db.execute(select(Engineer).where(Engineer.name == "Frontend Pete"))
+        if not result.scalar_one_or_none():
+            engineers = [
+                Engineer(name="Frontend Pete",   template="frontend",   skills_markdown="React, TypeScript, Tailwind CSS, Next.js App Router, Vitest", status=EngineerStatus.idle,    owner_id=admin.id, organization_id=admin_org.id),
+                Engineer(name="Backend Bobby",   template="backend",    skills_markdown="Python, FastAPI, SQLAlchemy, PostgreSQL, Alembic, pytest",   status=EngineerStatus.running, owner_id=admin.id, organization_id=admin_org.id),
+                Engineer(name="Full-stack Fiona",template="fullstack",  skills_markdown="React + FastAPI, Docker, GitHub Actions, AWS S3",            status=EngineerStatus.idle,    owner_id=admin.id, organization_id=admin_org.id),
+            ]
+            for eng in engineers:
+                db.add(eng)
+            print("  created 3 seed engineers")
+
+        # ── Standard SDLC workflow ────────────────────────────────────────────
+        from models.workflow import Workflow, WorkflowStage
+        result = await db.execute(
+            select(Workflow).where(Workflow.owner_id == admin.id, Workflow.name == "Standard SDLC Pipeline")
+        )
+        if not result.scalar_one_or_none():
+            wf = Workflow(
+                owner_id=admin.id,
+                organization_id=admin_org.id,
+                name="Standard SDLC Pipeline",
+                description="Plan → Approve → Build → Test → Deploy with a rework loop from QA back to Build.",
+            )
+            db.add(wf)
+            await db.flush()
+            stage_defs = [
+                ("AI Grooming",   0, True,  False, "Assess whether the task is implementation-ready. List gaps, risks, and concrete acceptance criteria. Do not implement anything."),
+                ("Approval Gate", 1, False, True,  None),
+                ("Build",         2, True,  True,  "Implement the task end-to-end on the task branch. Add tests where the codebase has them and run available verification before finishing."),
+                ("QA Testing",    3, True,  False, "Verify the implementation against the acceptance criteria. Run the strongest verification available and report concrete evidence."),
+                ("Deploy",        4, True,  False, "Prepare and execute the deployment using the project's deploy configuration. Capture evidence such as URLs and logs."),
+            ]
+            stages = []
+            for name, order, ai, approval, instructions in stage_defs:
+                s = WorkflowStage(
+                    workflow_id=wf.id, name=name, stage_order=order,
+                    is_ai_executable=ai, requires_human_approval=approval,
+                    stage_instructions=instructions,
+                    max_rework_attempts=3,
+                )
+                db.add(s)
+                stages.append(s)
+            await db.flush()
+            # QA failures loop back to Build
+            stages[3].rework_target_stage_id = stages[2].id
+            print("  created workflow: Standard SDLC Pipeline (5 stages)")
 
         await db.commit()
         print("\nSeed complete! Demo credentials:")

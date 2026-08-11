@@ -10,6 +10,7 @@ import {
   useDeployEnvironments, useCreateDeployEnvironment, useDeleteDeployEnvironment,
 } from "@/hooks/useIntegrations"
 import { cn, formatRelativeTime } from "@/lib/utils"
+import { apiFetch } from "@/lib/api"
 import { toast } from "sonner"
 import type { GitProvider, DeployProvider, GitIntegration, DeployEnvironment } from "@/types"
 
@@ -270,11 +271,32 @@ function GitIntegrationRow({ row }: { row: GitIntegration }) {
   const del = useDeleteGitIntegration()
   const update = useUpdateGitIntegration()
   const meta = GIT_PROVIDERS.find(p => p.id === row.provider)
+  const [testing, setTesting] = useState(false)
 
   async function handleDelete() {
     if (!confirm(`Remove "${row.name}"?`)) return
     try { await del.mutateAsync(row.id); toast.success("Integration removed") }
     catch { toast.error("Failed to remove") }
+  }
+
+  async function handleTest() {
+    let target = row.base_url
+    if (!target) {
+      target = prompt("Repo URL to test against (e.g. https://github.com/owner/repo):") ?? ""
+      if (!target) return
+    }
+    setTesting(true)
+    try {
+      const res = await apiFetch<{ ok: boolean; full_name?: string; error?: string }>(
+        `/api/integrations/git/${row.id}/verify?repo_url=${encodeURIComponent(target)}`
+      )
+      if (res.ok) toast.success(`Connected: ${res.full_name}`)
+      else toast.error(`Connection failed: ${res.error?.slice(0, 120)}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Connection test failed")
+    } finally {
+      setTesting(false)
+    }
   }
 
   return (
@@ -298,6 +320,16 @@ function GitIntegrationRow({ row }: { row: GitIntegration }) {
       </div>
       <span className="text-xs text-muted-foreground hidden sm:block shrink-0">{formatRelativeTime(row.created_at)}</span>
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {row.has_token && (
+          <button
+            onClick={handleTest}
+            disabled={testing}
+            className="p-1.5 rounded-lg hover:bg-muted text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+            title="Test connection"
+          >
+            {testing ? "Testing…" : "Test"}
+          </button>
+        )}
         <button
           onClick={() => update.mutate({ id: row.id, is_active: !row.is_active })}
           className="p-1.5 rounded-lg hover:bg-muted text-xs text-muted-foreground hover:text-foreground"

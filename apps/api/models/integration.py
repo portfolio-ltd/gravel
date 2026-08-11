@@ -1,6 +1,8 @@
 import enum
+
+from sqlalchemy import Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Boolean
+
 from db.base import BaseModel, TimestampMixin
 
 
@@ -22,6 +24,7 @@ class GitIntegration(BaseModel, TimestampMixin):
     __tablename__ = "git_integrations"
 
     owner_id:               Mapped[str]       = mapped_column(String(36), index=True)
+    organization_id:        Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
     provider:               Mapped[str]       = mapped_column(String(20))   # GitProvider value
     name:                   Mapped[str]       = mapped_column(String(120))  # display name
     base_url:               Mapped[str | None] = mapped_column(String(500)) # Gitea / self-hosted
@@ -34,6 +37,7 @@ class DeployEnvironment(BaseModel, TimestampMixin):
     __tablename__ = "deploy_environments"
 
     owner_id:           Mapped[str]       = mapped_column(String(36), index=True)
+    organization_id:    Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
     project_id:         Mapped[str | None] = mapped_column(String(36), index=True)  # null = global
     name:               Mapped[str]       = mapped_column(String(120))   # e.g. "staging"
     provider:           Mapped[str]       = mapped_column(String(20))    # DeployProvider value

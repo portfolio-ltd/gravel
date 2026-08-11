@@ -1,6 +1,9 @@
-from pydantic import BaseModel
 from datetime import datetime
-from models.task import TaskStatus, TaskPriority, TaskType
+
+from pydantic import BaseModel
+
+from models.task import TaskPriority, TaskStatus, TaskType
+from schemas.tag import TagOut
 
 
 class TaskCreate(BaseModel):
@@ -33,6 +36,12 @@ class TaskOut(BaseModel):
     priority: TaskPriority
     type: TaskType
     position: int
+    branch_name: str | None = None
+    pr_url: str | None = None
+    deploy_url: str | None = None
+    workflow_stage_id: str | None = None
+    rework_count: int = 0
+    tags: list[TagOut] = []
     created_at: datetime
     updated_at: datetime
 

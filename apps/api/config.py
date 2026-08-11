@@ -1,8 +1,9 @@
 import secrets
 from functools import lru_cache
 from pathlib import Path
-from pydantic_settings import BaseSettings
+
 from cryptography.fernet import Fernet
+from pydantic_settings import BaseSettings
 
 
 def _find_env_file() -> list[str]:
@@ -19,6 +20,7 @@ def _find_env_file() -> list[str]:
 class Settings(BaseSettings):
     # ── Database ──────────────────────────────────────────────────────────────
     DATABASE_URL: str = "sqlite+aiosqlite:///./gravel.db"
+    DATABASE_SSL: str = ""  # set to "require" for managed Postgres (e.g. Supabase)
 
     # ── Redis (optional) ──────────────────────────────────────────────────────
     REDIS_URL: str = ""
@@ -38,6 +40,17 @@ class Settings(BaseSettings):
     SHOW_DOCS: bool = True
     DEBUG: bool = False
     UPLOAD_DIR: str = "./uploads"
+
+    # ── Engineer runtimes ─────────────────────────────────────────────────────
+    # "docker" launches real containers; "simulated" records runtimes in the DB
+    # and lets the in-process agent loop execute runs (no Docker required).
+    RUNTIME_MODE: str = "docker"
+    RUNTIME_IMAGE: str = "gravel-engineer:latest"
+    RUNTIME_IMAGE_CONTEXT_PATH: str = ""  # defaults to <repo>/apps/runtime when empty
+    RUNTIME_DOCKER_NETWORK: str = ""      # e.g. gravel_default when API runs in compose
+    RUNTIME_API_BASE_URL: str = "http://host.docker.internal:8000"
+    RUNTIME_POLL_INTERVAL_SECONDS: int = 15
+    RUNTIME_HEARTBEAT_INTERVAL_SECONDS: int = 60
 
     # ── Git integrations ──────────────────────────────────────────────────────
     GITHUB_CLIENT_ID: str = ""
@@ -71,8 +84,15 @@ class Settings(BaseSettings):
 
     @property
     def fernet(self) -> Fernet:
-        key = self.ENCRYPTION_KEY or Fernet.generate_key().decode()
-        return Fernet(key.encode() if isinstance(key, str) else key)
+        return _fernet_for(self.ENCRYPTION_KEY)
+
+
+@lru_cache
+def _fernet_for(key: str) -> Fernet:
+    # Stable within the process even when ENCRYPTION_KEY is unset, so values
+    # encrypted during this run can still be read back during this run.
+    resolved = key or Fernet.generate_key().decode()
+    return Fernet(resolved.encode())
 
 
 @lru_cache

@@ -1,15 +1,23 @@
-from fastapi import APIRouter, HTTPException, status
-from dependencies import CurrentUser, DB
+from fastapi import APIRouter, HTTPException
+
+from dependencies import DB, CurrentUser
 from models.user import User, UserRole
 from schemas.auth import (
-    SignupRequest, LoginRequest, TokenResponse,
-    RefreshRequest, AccessTokenResponse,
+    AccessTokenResponse,
+    LoginRequest,
+    RefreshRequest,
+    SignupRequest,
+    TokenResponse,
 )
 from schemas.user import UserOut
 from services.auth import (
-    hash_password, verify_password, create_access_token,
-    create_refresh_token, rotate_refresh_token, revoke_refresh_token,
+    create_access_token,
+    create_refresh_token,
     get_user_by_email,
+    hash_password,
+    revoke_refresh_token,
+    rotate_refresh_token,
+    verify_password,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -32,6 +40,8 @@ async def signup(body: SignupRequest, db: DB):
     )
     db.add(user)
     await db.flush()
+    from services.organizations import ensure_personal_org
+    await ensure_personal_org(db, user)
     access = create_access_token(user.id)
     refresh = await create_refresh_token(db, user.id)
     return TokenResponse(access_token=access, refresh_token=refresh)

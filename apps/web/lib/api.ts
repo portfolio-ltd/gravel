@@ -2,6 +2,7 @@
 
 import { ApiError } from "@/types"
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "./auth"
+import { getActiveOrgId } from "./orgStore"
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
@@ -40,10 +41,12 @@ export async function apiFetch<T = unknown>(
   retry = true,
 ): Promise<T> {
   const token = getAccessToken()
+  const orgId = getActiveOrgId()
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     ...(init.headers as object ?? {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(orgId ? { "X-Org-Id": orgId } : {}),
   }
 
   const res = await fetch(`${BASE}${path}`, { ...init, headers })
@@ -72,9 +75,13 @@ export async function apiFetch<T = unknown>(
 // ── Multipart (file upload) ───────────────────────────────────────────────────
 export async function apiUpload<T = unknown>(path: string, formData: FormData): Promise<T> {
   const token = getAccessToken()
+  const orgId = getActiveOrgId()
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(orgId ? { "X-Org-Id": orgId } : {}),
+    },
     body: formData,
   })
   if (!res.ok) {

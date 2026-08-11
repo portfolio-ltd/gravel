@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -6,15 +7,32 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
-from config import settings
-from db.session import engine
-from db.base import Base
+from fastapi.staticfiles import StaticFiles
 
 # Import all models so Alembic/SQLAlchemy picks them up
 import models  # noqa: F401
-
-from routers import auth, users, projects, tasks, changelog, files, agent, ws, integrations
+from config import settings
+from db.base import Base
+from db.session import engine
+from routers import (
+    agent,
+    artifacts,
+    auth,
+    board,
+    changelog,
+    engineers,
+    files,
+    integrations,
+    organizations,
+    prds,
+    projects,
+    tags,
+    task_runs,
+    tasks,
+    users,
+    workflows,
+    ws,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -78,6 +96,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/health", tags=["meta"])
 async def health():
     from sqlalchemy import text
+
     from db.session import AsyncSessionLocal
     db_ok = False
     try:
@@ -99,4 +118,16 @@ app.include_router(changelog.router, prefix=API)
 app.include_router(files.router,     prefix=API)
 app.include_router(agent.router,        prefix=API)
 app.include_router(integrations.router, prefix=API)
+app.include_router(engineers.router,   prefix=API)
+app.include_router(task_runs.router,   prefix=API)
+app.include_router(board.router,       prefix=API)
+app.include_router(artifacts.router,   prefix=API)
+app.include_router(workflows.router,   prefix=API)
+app.include_router(organizations.router, prefix=API)
+app.include_router(tags.router,        prefix=API)
+app.include_router(prds.router,        prefix=API)
 app.include_router(ws.router)  # /ws/{project_id} — no /api prefix
+
+# ── Uploaded files (PRDs, designs, evidence artifacts) ───────────────────────
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

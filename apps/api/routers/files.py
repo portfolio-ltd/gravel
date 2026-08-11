@@ -1,8 +1,9 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from dependencies import CurrentUser, DB
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+
+from dependencies import DB, CurrentOrg, CurrentUser
 from models.project import ProjectDesignFile
-from services.storage import save_upload, delete_upload, ALLOWED_PRD_TYPES, ALLOWED_DESIGN_TYPES
 from services.projects import get_project
+from services.storage import ALLOWED_DESIGN_TYPES, ALLOWED_PRD_TYPES, delete_upload, save_upload
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -13,10 +14,11 @@ async def upload_file(
     file_type: str = Form("prd"),  # "prd" or "design"
     file: UploadFile = File(...),
     current_user: CurrentUser = None,
+    org: CurrentOrg = None,
     db: DB = None,
 ):
     allowed = ALLOWED_PRD_TYPES if file_type == "prd" else ALLOWED_DESIGN_TYPES
-    p = await get_project(db, project_id)
+    p = await get_project(db, project_id, organization_id=org.id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -46,7 +48,8 @@ async def delete_file(
     current_user: CurrentUser,
     db: DB,
 ):
-    from sqlalchemy import select, delete as sql_delete
+    from sqlalchemy import delete as sql_delete
+    from sqlalchemy import select
     result = await db.execute(
         select(ProjectDesignFile).where(
             ProjectDesignFile.project_id == project_id,

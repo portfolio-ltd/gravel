@@ -9,7 +9,18 @@ const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "Gravel — AI-powered engineering",
-  description: "Upload a PRD. Get a working product. The agent builds, tests, and ships.",
+  description: "Upload a PRD. Get a working product. AI engineers groom, build, test, and ship behind human approval gates.",
+  openGraph: {
+    title: "Gravel — AI-powered engineering",
+    description: "Upload a PRD. Get a working product. AI engineers groom, build, test, and ship behind human approval gates.",
+    type: "website",
+    siteName: "Gravel",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Gravel — AI-powered engineering",
+    description: "Upload a PRD. Get a working product. AI engineers groom, build, test, and ship behind human approval gates.",
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

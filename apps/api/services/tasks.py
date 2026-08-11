@@ -1,9 +1,9 @@
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.task import Task, TaskStatus
 from models.project import Project
-from schemas.task import TaskCreate, TaskUpdate, TaskReorderItem
+from models.task import Task, TaskStatus
+from schemas.task import TaskCreate, TaskReorderItem, TaskUpdate
 
 
 async def list_tasks(db: AsyncSession, project_id: str) -> list[Task]:
@@ -22,6 +22,7 @@ async def get_task(db: AsyncSession, task_id: str, project_id: str) -> Task | No
 
 async def create_task(db: AsyncSession, project_id: str, data: TaskCreate) -> Task:
     t = Task(project_id=project_id, **data.model_dump())
+    t.tags = []  # initialize so serialization never lazy-loads a fresh instance
     db.add(t)
     await db.flush()
     return t

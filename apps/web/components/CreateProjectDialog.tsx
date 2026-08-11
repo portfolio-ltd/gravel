@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { useCreateProject } from "@/hooks/useProjects"
+import { useWorkflows } from "@/hooks/useWorkflows"
 import { useUploadFile, useParseAgent } from "@/hooks/useAgent"
 import { toast } from "sonner"
 import type { Project } from "@/types"
@@ -37,6 +38,8 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
   const [step, setStep] = useState<Step>("name")
   const [name, setName] = useState("")
   const [model, setModel] = useState("claude-sonnet-4-6")
+  const [workflowId, setWorkflowId] = useState<string | null>(null)
+  const { data: workflows } = useWorkflows()
   const [project, setProject] = useState<Project | null>(null)
   const [parsedTasks, setParsedTasks] = useState<ParsedTask[]>([])
   const [prdFile, setPrdFile] = useState<File | null>(null)
@@ -51,6 +54,7 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
     setStep("name")
     setName("")
     setModel("claude-sonnet-4-6")
+    setWorkflowId(null)
     setProject(null)
     setParsedTasks([])
     setPrdFile(null)
@@ -65,7 +69,7 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
   async function handleCreateAndUpload() {
     if (!name.trim()) return
     try {
-      const proj = await createProject.mutateAsync({ name: name.trim(), default_model: model })
+      const proj = await createProject.mutateAsync({ name: name.trim(), default_model: model, workflow_id: workflowId ?? undefined })
       setProject(proj)
       if (prdFile) {
         await uploadFile.mutateAsync({ projectId: proj.id, file: prdFile, fileType: "prd" })
@@ -78,7 +82,7 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
         setParseProgress(Math.round(prog))
       }, 400)
 
-      const result = await parseAgent.mutateAsync({ project_id: proj.id, model })
+      const result = await parseAgent.mutateAsync({ project_id: proj.id, model }) as { tasks: Array<{ title: string; description: string; priority: string; type: string }> }
       clearInterval(interval)
       setParseProgress(100)
       setParsedTasks(result.tasks)
@@ -146,6 +150,19 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
                   </button>
                 ))}
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Workflow</label>
+              <select
+                value={workflowId ?? ""}
+                onChange={(e) => setWorkflowId(e.target.value || null)}
+                className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">None — default pipeline (groom → build → test → deploy)</option>
+                {(workflows ?? []).map((wf) => (
+                  <option key={wf.id} value={wf.id}>{wf.name} ({wf.stages.length} stages)</option>
+                ))}
+              </select>
             </div>
             <div className="flex justify-end pt-1">
               <Button disabled={!name.trim()} onClick={() => setStep("upload")}>

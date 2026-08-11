@@ -1,14 +1,62 @@
-import asyncio
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
-from dependencies import CurrentUser, DB
-from models.task import Task, TaskPriority, TaskType, TaskStatus
-from services.projects import get_project
-from services.parser import parse_prd
-from services.users import get_plain_keys
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from dependencies import DB, CurrentOrg, CurrentUser, get_current_runtime, get_db
+from models.engineer import Engineer, EngineerRuntime
+from models.task import Task, TaskPriority, TaskStatus, TaskType
+from models.task_run import TaskComment
+from schemas.task_run import PollResponse
 from services import agent as agent_svc
+from services import orchestrator
+from services.parser import parse_prd
+from services.projects import get_project
+from services.users import get_plain_keys
 
 router = APIRouter(prefix="/agent", tags=["agent"])
+
+
+@router.post("/poll-next-task", response_model=PollResponse)
+async def poll_next_task(
+    db: AsyncSession = Depends(get_db),
+    runtime: EngineerRuntime = Depends(get_current_runtime),
+):
+    """Engineer runtimes claim their next unit of work here."""
+    engineer = await db.get(Engineer, runtime.engineer_id)
+    if not engineer:
+        raise HTTPException(404, "Engineer not found for runtime")
+
+    claimed = await orchestrator.claim_next_run(db, engineer, runtime)
+    if not claimed:
+        return PollResponse()
+
+    run, task, project = claimed
+    comments = list((await db.execute(
+        select(TaskComment).where(TaskComment.task_id == task.id).order_by(TaskComment.created_at)
+    )).scalars())
+
+    stage = None
+    poll_stage = None
+    stage_position = None
+    if run.workflow_stage_id:
+        from models.workflow import WorkflowStage
+        from schemas.task_run import PollStage
+        stage = await db.get(WorkflowStage, run.workflow_stage_id)
+        if stage:
+            stages = await orchestrator.ordered_stages(db, stage.workflow_id)
+            idx = [s.id for s in stages].index(stage.id)
+            stage_position = (idx + 1, len(stages))
+            poll_stage = PollStage(
+                id=stage.id, name=stage.name, stage_order=stage.stage_order,
+                is_first=idx == 0, is_last=idx == len(stages) - 1,
+                requires_human_approval=stage.requires_human_approval,
+            )
+
+    bundle = orchestrator.build_task_bundle(
+        task, project, engineer, comments, run.phase, stage=stage, stage_position=stage_position
+    )
+    return PollResponse(task_run=run, task=task, project=project, bundle=bundle, workflow_stage=poll_stage)
 
 
 class ParseRequest(BaseModel):
@@ -22,8 +70,8 @@ class ParseResponse(BaseModel):
 
 
 @router.post("/parse", response_model=ParseResponse)
-async def parse_prd_endpoint(body: ParseRequest, current_user: CurrentUser, db: DB):
-    p = await get_project(db, body.project_id)
+async def parse_prd_endpoint(body: ParseRequest, current_user: CurrentUser, org: CurrentOrg, db: DB):
+    p = await get_project(db, body.project_id, organization_id=org.id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
     if not p.prd_file_path:
@@ -32,7 +80,13 @@ async def parse_prd_endpoint(body: ParseRequest, current_user: CurrentUser, db: 
     keys = get_plain_keys(current_user)
     model = body.model or p.default_model
 
-    raw_tasks = await parse_prd(p.prd_file_path, model, keys)
+    raw_tasks, usage = await parse_prd(p.prd_file_path, model, keys)
+    if usage:
+        from services.token_usage import record_usage
+        await record_usage(
+            db, model=usage.model, tokens_in=usage.tokens_in, tokens_out=usage.tokens_out,
+            user_id=current_user.id, organization_id=org.id,
+        )
 
     # Persist extracted tasks (clear existing pending tasks first)
     from sqlalchemy import delete
@@ -64,8 +118,8 @@ async def parse_prd_endpoint(body: ParseRequest, current_user: CurrentUser, db: 
 
 
 @router.post("/run/{project_id}", status_code=202)
-async def run_agent(project_id: str, background_tasks: BackgroundTasks, current_user: CurrentUser, db: DB):
-    p = await get_project(db, project_id)
+async def run_agent(project_id: str, background_tasks: BackgroundTasks, current_user: CurrentUser, org: CurrentOrg, db: DB):
+    p = await get_project(db, project_id, organization_id=org.id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
     if agent_svc.is_running(project_id):
@@ -83,8 +137,8 @@ async def run_agent(project_id: str, background_tasks: BackgroundTasks, current_
 
 
 @router.get("/status/{project_id}")
-async def agent_status(project_id: str, current_user: CurrentUser, db: DB):
-    p = await get_project(db, project_id)
+async def agent_status(project_id: str, current_user: CurrentUser, org: CurrentOrg, db: DB):
+    p = await get_project(db, project_id, organization_id=org.id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
     running = agent_svc.is_running(project_id)

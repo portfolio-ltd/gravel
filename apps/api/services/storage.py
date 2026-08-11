@@ -1,6 +1,5 @@
-import os
-import shutil
 from pathlib import Path
+
 from fastapi import HTTPException, UploadFile
 
 from config import settings

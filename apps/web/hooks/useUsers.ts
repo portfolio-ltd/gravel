@@ -60,7 +60,7 @@ export function useSaveApiKeys() {
   return useMutation({
     mutationFn: ({ userId, keys }: { userId: string; keys: ApiKeysMasked }) =>
       apiFetch(`/api/users/${userId}/api-keys`, { method: "PUT", body: JSON.stringify(keys) }),
-    onSuccess: (_: unknown, { userId }: { userId: string }) =>
+    onSuccess: (_: unknown, { userId }: { userId: string; keys: ApiKeysMasked }) =>
       qc.invalidateQueries({ queryKey: ["api-keys", userId] }),
   })
 }
