@@ -20,6 +20,39 @@ const ROLE_COLORS: Record<string, string> = {
   devops: "bg-emerald-100 text-emerald-700",
 }
 
+function VerifyEmailBanner() {
+  const [sent, setSent] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+  if (dismissed) return null
+
+  async function resend() {
+    try {
+      const { apiFetch } = await import("@/lib/api")
+      await apiFetch("/api/auth/resend-verification", { method: "POST" })
+      setSent(true)
+    } catch {
+      /* banner is best-effort */
+    }
+  }
+
+  return (
+    <div className="bg-amber-50 border-b border-amber-200 px-4 py-1.5 flex items-center gap-2 text-xs text-amber-800">
+      <Bell className="w-3.5 h-3.5 shrink-0" />
+      <span>Please verify your email address.</span>
+      {sent ? (
+        <span className="font-medium">Verification email sent — check your inbox.</span>
+      ) : (
+        <button onClick={resend} className="font-semibold underline hover:no-underline">
+          Resend email
+        </button>
+      )}
+      <button onClick={() => setDismissed(true)} className="ml-auto p-0.5 rounded hover:bg-amber-100">
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  )
+}
+
 const NAV = [
   { to: "/projects",     icon: <LayoutDashboard className="w-4 h-4" />, label: "Projects" },
   { to: "/board",        icon: <Kanban className="w-4 h-4" />,          label: "Board" },
@@ -133,6 +166,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {mobileOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
         </button>
       </header>
+
+      {user && user.email_verified_at === null && <VerifyEmailBanner />}
 
       {mobileOpen && (
         <div className="sm:hidden border-b bg-background z-20">

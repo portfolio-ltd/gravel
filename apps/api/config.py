@@ -36,6 +36,18 @@ class Settings(BaseSettings):
     # ── CORS ──────────────────────────────────────────────────────────────────
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 
+    # ── Email (SMTP) ──────────────────────────────────────────────────────────
+    # Leave SMTP_HOST empty to run without email: verification/reset links are
+    # logged to the API log instead of sent (dev mode).
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "Gravel <no-reply@gravel.dev>"
+    SMTP_TLS: bool = True
+    # Base URL of the web app, used to build email links
+    WEB_BASE_URL: str = "http://localhost:3000"
+
     # ── Misc ──────────────────────────────────────────────────────────────────
     SHOW_DOCS: bool = True
     DEBUG: bool = False

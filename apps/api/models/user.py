@@ -1,6 +1,7 @@
 import enum
+from datetime import datetime
 
-from sqlalchemy import Boolean, String, Text
+from sqlalchemy import Boolean, DateTime, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +24,7 @@ class User(BaseModel):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[UserRole] = mapped_column(SAEnum(UserRole, native_enum=False, length=50), nullable=False, default=UserRole.developer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Fernet-encrypted JSON blob: {"openai": "sk-...", "anthropic": "sk-ant-...", "groq": "gsk_..."}
     api_keys_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
 

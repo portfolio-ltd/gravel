@@ -13,7 +13,10 @@ export function setTokens(access: string, refresh: string): void {
   Cookies.set(REFRESH_KEY, refresh, {
     expires: 30,
     sameSite: "strict",
-    secure: process.env.NODE_ENV === "production",
+    // Key off the actual transport, not the build mode: a production build
+    // served over plain http (Docker on localhost/LAN) must not set Secure,
+    // or the browser drops the cookie and login silently bounces.
+    secure: typeof window !== "undefined" && window.location.protocol === "https:",
   })
 }
 

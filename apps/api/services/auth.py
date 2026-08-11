@@ -35,6 +35,39 @@ def decode_access_token(token: str) -> str | None:
         return None
 
 
+# ── Purpose-scoped email tokens (verification, password reset) ───────────────
+
+EMAIL_TOKEN_TTL_MINUTES = {"verify_email": 72 * 60, "reset_password": 30}
+
+
+def create_email_token(user_id: str, purpose: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=EMAIL_TOKEN_TTL_MINUTES[purpose])
+    return jwt.encode(
+        {"sub": user_id, "purpose": purpose, "exp": expire},
+        settings.SECRET_KEY, algorithm="HS256",
+    )
+
+
+def decode_email_token(token: str, purpose: str) -> str | None:
+    """User id if the token is valid, unexpired, and for the right purpose."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        if payload.get("purpose") != purpose:
+            return None
+        return payload.get("sub")
+    except JWTError:
+        return None
+
+
+async def revoke_all_refresh_tokens(db: AsyncSession, user_id: str) -> None:
+    """Log the user out everywhere — used after a password reset."""
+    result = await db.execute(
+        select(RefreshToken).where(RefreshToken.user_id == user_id, RefreshToken.revoked.is_(False))
+    )
+    for rt in result.scalars():
+        rt.revoked = True
+
+
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
