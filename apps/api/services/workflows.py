@@ -57,6 +57,7 @@ async def create_workflow(db: AsyncSession, owner_id: str, data: WorkflowCreate,
             requires_human_approval=stage.requires_human_approval,
             is_ai_executable=stage.is_ai_executable,
             stage_instructions=stage.stage_instructions,
+            model=_clean_model(stage.model),
             max_rework_attempts=stage.max_rework_attempts,
             # Inline rework targets can't reference not-yet-created ids — set via PATCH from the editor
             rework_target_stage_id=None,
@@ -114,6 +115,7 @@ async def add_stage(db: AsyncSession, wf: Workflow, data: WorkflowStageCreate) -
         requires_human_approval=data.requires_human_approval,
         is_ai_executable=data.is_ai_executable,
         stage_instructions=data.stage_instructions,
+        model=_clean_model(data.model),
         max_rework_attempts=data.max_rework_attempts,
         rework_target_stage_id=data.rework_target_stage_id,
     )
@@ -128,6 +130,8 @@ async def update_stage(db: AsyncSession, wf: Workflow, stage: WorkflowStage, dat
         fields["role"] = _valid_role(fields["role"])
     if fields.get("block_on_open_questions") is None:
         fields.pop("block_on_open_questions", None)
+    if "model" in fields:
+        fields["model"] = _clean_model(fields["model"])
     if "assigned_engineer_id" in fields or "rework_target_stage_id" in fields:
         await _validate_stage_refs(
             db, wf,
@@ -178,6 +182,15 @@ def _valid_role(role: str | None) -> str:
     if role not in ROLE_KEYS:
         raise HTTPException(400, f"Unknown stage role '{role}'. Valid roles: {', '.join(ROLE_KEYS)}")
     return role
+
+
+def _clean_model(model: str | None) -> str | None:
+    # Blank means "inherit". Any id the provider accepts is allowed — the
+    # catalog (services/model_catalog.py) is only the UI's curated menu.
+    model = (model or "").strip()
+    if len(model) > 100:
+        raise HTTPException(400, "Model id must be at most 100 characters")
+    return model or None
 
 
 async def _validate_stage_refs(

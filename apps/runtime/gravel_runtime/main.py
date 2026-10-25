@@ -65,9 +65,13 @@ def _execute_run(client: GravelClient, payload: dict) -> None:
         root = workspace.prepare_workspace(task["id"], project.get("repo_url"), project.get("default_branch") or "main")
         actual_branch = workspace.checkout_branch(root, branch, create) if project.get("repo_url") else None
         workspace.write_bundle(root, bundle)
-        client.post_log(run_id, f"Workspace ready (branch: {actual_branch or 'no repo'}). Executing {unit} via {config.executor}.")
+        provider, model, model_note = executor.select_model(payload)
+        if model_note:
+            client.post_log(run_id, model_note, level="warn")
+        client.post_log(run_id, f"Workspace ready (branch: {actual_branch or 'no repo'}). "
+                                f"Executing {unit} via {config.executor} on {model}.")
 
-        result = executor.execute(root)
+        result = executor.execute(root, provider, model)
         outcome_type = result.get("outcome_type", "failed")
         summary = result.get("summary", "")
         pr_url = None
@@ -108,7 +112,7 @@ def _execute_run(client: GravelClient, payload: dict) -> None:
             "deploy_url": result.get("deploy_url"),
             "tokens_in": result.get("tokens_in"),
             "tokens_out": result.get("tokens_out"),
-            "model": config.model_name if (result.get("tokens_in") or result.get("tokens_out")) else None,
+            "model": model if (result.get("tokens_in") or result.get("tokens_out")) else None,
             **{key: result[key] for key in executor.STRUCTURED_FIELDS if result.get(key)},
         })
         logger.info("run %s finished: %s", run_id, outcome_type)

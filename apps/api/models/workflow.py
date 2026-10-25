@@ -45,6 +45,9 @@ class WorkflowStage(BaseModel):
     requires_human_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_ai_executable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     stage_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Model override for this stage's runs; None inherits engineer → project →
+    # DEFAULT_MODEL (services/llm.py resolve_model)
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     max_rework_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     rework_target_stage_id: Mapped[str | None] = mapped_column(
         String(36),

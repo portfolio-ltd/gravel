@@ -6,6 +6,14 @@ All notable changes to Gravel are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Per-stage model selection: each workflow stage can name its own model (for
+  example a cheaper model for Analyze and a stronger one for Build). Runs
+  resolve their model as stage → engineer → project → `DEFAULT_MODEL`, and the
+  runtime poll response carries the resolved `model` and `model_provider`.
+  Migration `008` adds `workflow_stages.model` (#11)
+
 ## [0.1.0] - 2026-10-25
 
 First open-source release.

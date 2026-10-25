@@ -3,6 +3,9 @@ and PRD chat — every call returns its token usage for the ledger."""
 import logging
 from dataclasses import dataclass
 
+from config import settings
+from services.model_catalog import MODEL_CATALOG
+
 logger = logging.getLogger(__name__)
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
@@ -28,6 +31,34 @@ class LLMResult:
 
 class LLMRefusal(RuntimeError):
     """The model declined the request (stop_reason == "refusal")."""
+
+
+def resolve_model(stage=None, engineer=None, project=None) -> str:
+    """The model a run uses: stage → engineer → project → DEFAULT_MODEL.
+
+    The single home of this precedence — the in-process executor, the
+    runtime poll payload and the task bundle all ask here. Every level is
+    optional; a blank value inherits from the next one.
+    """
+    for candidate in (
+        getattr(stage, "model", None),
+        getattr(engineer, "model_name", None),
+        getattr(project, "default_model", None),
+    ):
+        if candidate and candidate.strip():
+            return candidate.strip()
+    return settings.DEFAULT_MODEL
+
+
+def provider_for_model(model: str) -> str | None:
+    """Provider that serves a model id: the catalog entry, else the id prefix."""
+    entry = next((m for m in MODEL_CATALOG if m["id"] == model), None)
+    if entry:
+        return entry["provider"]
+    for prefix, provider in (("claude", "anthropic"), ("gpt", "openai"), ("llama", "groq")):
+        if model.startswith(prefix):
+            return provider
+    return None
 
 
 def pick_provider(keys: dict, model: str) -> str | None:

@@ -41,6 +41,7 @@ from models.task_run import (
 )
 from models.workflow import WorkflowStage
 from services import sdlc, ws_manager
+from services.llm import resolve_model
 from services.tasks import recalculate_progress
 
 logger = logging.getLogger(__name__)
@@ -307,7 +308,7 @@ def build_task_bundle(task: Task, project: Project, engineer: Engineer | None,
             f"- Repository: {project.repo_url or 'not configured'}\n"
             f"- Default branch: {project.default_branch}\n"
             f"- Task branch: {task.branch_name or f'gravel/task-{task.id[:8]}'}\n"
-            f"- Default model: {project.default_model}\n"
+            f"- Model: {resolve_model(stage, engineer, project)}\n"
             + (f"\n## Engineer skills\n{engineer.skills_markdown}\n" if engineer and engineer.skills_markdown else "")
         ),
         "STAGE_INSTRUCTIONS.md": _stage_instructions_doc(stage, stage_position) if stage

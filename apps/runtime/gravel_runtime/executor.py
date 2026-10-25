@@ -30,6 +30,25 @@ and end your final message with the same JSON object. Never commit files under .
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
+PROVIDER_KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "groq": "GROQ_API_KEY"}
+
+
+def select_model(payload: dict) -> tuple[str, str, str | None]:
+    """(provider, model, note) for a claimed run.
+
+    Gravel resolves the run's model (stage → engineer → project → default)
+    and sends it with the poll. A runtime only holds the API key for its
+    engineer's provider, so a model from another provider falls back to the
+    launch model and the note explains why.
+    """
+    model = payload.get("model") or config.model_name
+    provider = payload.get("model_provider") or config.model_provider
+    if provider != config.model_provider and not os.environ.get(PROVIDER_KEY_ENV.get(provider, "")):
+        return config.model_provider, config.model_name, (
+            f"No {provider} API key in this runtime — using {config.model_name} instead of {model}."
+        )
+    return provider, model, None
+
 
 def _parse(text: str) -> dict | None:
     match = _JSON_RE.search(text or "")
@@ -72,13 +91,13 @@ def collect_outputs(workspace: Path, result: dict) -> dict:
     return result
 
 
-def run_opencode(workspace: Path) -> dict:
+def run_opencode(workspace: Path, provider: str, model: str) -> dict:
     if config.dry_run:
         return {"outcome_type": "needs_human_input", "summary": "Dry run — no work executed.",
                 "blocking_reason": "Runtime launched with GRAVEL_DRY_RUN=true"}
     cmd = [
         config.opencode_command, "run",
-        "--model", f"{config.model_provider}/{config.model_name}",
+        "--model", f"{provider}/{model}",
         "--dangerously-skip-permissions",
         SYSTEM_INSTRUCTIONS,
     ]
@@ -96,16 +115,16 @@ def run_opencode(workspace: Path) -> dict:
     return collect_outputs(workspace, parsed or {"outcome_type": "failed", "summary": ""})
 
 
-def run_claude_code(workspace: Path) -> dict:
+def run_claude_code(workspace: Path, provider: str, model: str) -> dict:
     if config.dry_run:
         return {"outcome_type": "needs_human_input", "summary": "Dry run — no work executed.",
                 "blocking_reason": "Runtime launched with GRAVEL_DRY_RUN=true"}
-    if config.model_provider != "anthropic":
-        return _failed(f"Claude Code needs an Anthropic model, not provider '{config.model_provider}'.")
+    if provider != "anthropic":
+        return _failed(f"Claude Code needs an Anthropic model, not provider '{provider}'.")
     cmd = [
         config.claude_command, "-p", SYSTEM_INSTRUCTIONS,
         "--output-format", "json",
-        "--model", config.model_name,
+        "--model", model,
         "--dangerously-skip-permissions",
     ]
     if config.claude_max_turns > 0:
@@ -150,16 +169,16 @@ def _bundle_text(workspace: Path) -> str:
     return "\n\n".join(parts)
 
 
-def run_llm(workspace: Path) -> dict:
+def run_llm(workspace: Path, provider: str, model: str) -> dict:
     """Single-shot LLM execution: reasons over the bundle, cannot edit the repo."""
     prompt = (SYSTEM_INSTRUCTIONS + "\nYou cannot edit files in this mode; reply with the JSON object only.\n\n"
               + _bundle_text(workspace))
     try:
-        if config.model_provider == "anthropic":
+        if provider == "anthropic":
             import anthropic
             client = anthropic.Anthropic()
             msg = client.messages.create(
-                model=config.model_name, max_tokens=16000,
+                model=model, max_tokens=16000,
                 messages=[{"role": "user", "content": prompt}],
             )
             if msg.stop_reason == "refusal":
@@ -170,13 +189,11 @@ def run_llm(workspace: Path) -> dict:
             usage = getattr(msg, "usage", None)
             tokens = (getattr(usage, "input_tokens", 0) or 0, getattr(usage, "output_tokens", 0) or 0)
         else:
-            import os
-
             from openai import OpenAI
-            base_url = "https://api.groq.com/openai/v1" if config.model_provider == "groq" else None
-            api_key = os.environ.get("GROQ_API_KEY") if config.model_provider == "groq" else os.environ.get("OPENAI_API_KEY")
+            base_url = "https://api.groq.com/openai/v1" if provider == "groq" else None
+            api_key = os.environ.get("GROQ_API_KEY") if provider == "groq" else os.environ.get("OPENAI_API_KEY")
             resp = OpenAI(base_url=base_url, api_key=api_key).chat.completions.create(
-                model=config.model_name, messages=[{"role": "user", "content": prompt}], max_tokens=16000,
+                model=model, messages=[{"role": "user", "content": prompt}], max_tokens=16000,
             )
             text = resp.choices[0].message.content or ""
             usage = getattr(resp, "usage", None)
@@ -189,9 +206,10 @@ def run_llm(workspace: Path) -> dict:
     return outcome
 
 
-def execute(workspace: Path) -> dict:
+def execute(workspace: Path, provider: str | None = None, model: str | None = None) -> dict:
+    provider, model = provider or config.model_provider, model or config.model_name
     if config.executor == "llm":
-        return run_llm(workspace)
+        return run_llm(workspace, provider, model)
     if config.executor == "claude-code":
-        return run_claude_code(workspace)
-    return run_opencode(workspace)
+        return run_claude_code(workspace, provider, model)
+    return run_opencode(workspace, provider, model)

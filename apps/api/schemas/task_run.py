@@ -130,6 +130,10 @@ class PollResponse(BaseModel):
     project: PollProject | None = None
     bundle: dict[str, str] | None = None
     workflow_stage: PollStage | None = None
+    # Model resolved for this run (stage → engineer → project → DEFAULT_MODEL)
+    # and its provider; older runtimes ignore these and use their launch model.
+    model: str | None = None
+    model_provider: str | None = None
 
 
 class LogSubmit(BaseModel):
