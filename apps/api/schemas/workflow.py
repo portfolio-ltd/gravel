@@ -12,6 +12,7 @@ class WorkflowStageCreate(BaseModel):
     requires_human_approval: bool = False
     is_ai_executable: bool = True
     stage_instructions: str | None = None
+    model: str | None = None  # None → inherit (engineer → project → DEFAULT_MODEL)
     max_rework_attempts: int = 3
     rework_target_stage_id: str | None = None
 
@@ -25,6 +26,7 @@ class WorkflowStageUpdate(BaseModel):
     requires_human_approval: bool | None = None
     is_ai_executable: bool | None = None
     stage_instructions: str | None = None
+    model: str | None = None
     max_rework_attempts: int | None = None
     rework_target_stage_id: str | None = None
 
@@ -40,6 +42,7 @@ class WorkflowStageOut(BaseModel):
     requires_human_approval: bool
     is_ai_executable: bool
     stage_instructions: str | None
+    model: str | None = None
     max_rework_attempts: int
     rework_target_stage_id: str | None
     created_at: datetime

@@ -10,6 +10,7 @@ from models.task_run import TaskComment
 from schemas.task_run import PollResponse
 from services import agent as agent_svc
 from services import orchestrator, sdlc
+from services.llm import provider_for_model, resolve_model
 from services.parser import parse_prd
 from services.projects import get_project
 from services.sdlc import merge_ai_criteria
@@ -60,7 +61,11 @@ async def poll_next_task(
         task, project, engineer, comments, run.phase, stage=stage, stage_position=stage_position
     )
     bundle.update(await sdlc.bundle_files(db, task, project))
-    return PollResponse(task_run=run, task=task, project=project, bundle=bundle, workflow_stage=poll_stage)
+    model = resolve_model(stage, engineer, project)
+    return PollResponse(
+        task_run=run, task=task, project=project, bundle=bundle, workflow_stage=poll_stage,
+        model=model, model_provider=provider_for_model(model) or engineer.model_provider,
+    )
 
 
 class ParseRequest(BaseModel):

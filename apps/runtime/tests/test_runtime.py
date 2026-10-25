@@ -116,7 +116,7 @@ def claude_code(monkeypatch):
 
 def test_execute_selects_executor(monkeypatch, tmp_path: Path):
     for name in ("run_opencode", "run_claude_code", "run_llm"):
-        monkeypatch.setattr(executor, name, lambda _ws, name=name: {"ran": name})
+        monkeypatch.setattr(executor, name, lambda _ws, _provider, _model, name=name: {"ran": name})
     for selected, expected in (("opencode", "run_opencode"), ("claude-code", "run_claude_code"), ("llm", "run_llm")):
         monkeypatch.setattr(config, "executor", selected)
         assert executor.execute(tmp_path) == {"ran": expected}
@@ -125,7 +125,7 @@ def test_execute_selects_executor(monkeypatch, tmp_path: Path):
 def test_claude_code_command(claude_code, monkeypatch, tmp_path: Path):
     monkeypatch.setattr(config, "claude_max_turns", 40)
     claude_code["stdout"] = _claude_envelope('{"outcome": "completed", "summary": "s"}')
-    executor.run_claude_code(tmp_path)
+    executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
     cmd = claude_code["cmd"]
     assert cmd[:3] == ["claude", "-p", executor.SYSTEM_INSTRUCTIONS]
     assert cmd[cmd.index("--output-format") + 1] == "json"
@@ -140,7 +140,7 @@ def test_claude_code_result_matches_contract(claude_code, tmp_path: Path):
     (out / "plan.md").write_text("# Plan")
     claude_code["stdout"] = _claude_envelope(
         'Done.\n{"outcome": "completed", "summary": "Planned", "acceptance_criteria": ["works"]}')
-    result = executor.run_claude_code(tmp_path)
+    result = executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
     assert "--max-turns" not in claude_code["cmd"]
     assert result["outcome_type"] == "completed" and result["summary"] == "Planned"
     assert result["acceptance_criteria"] == ["works"]
@@ -153,26 +153,50 @@ def test_claude_code_result_file_without_final_json(claude_code, tmp_path: Path)
     out.mkdir(parents=True)
     (out / "result.json").write_text(json.dumps({"outcome": "blocked", "summary": "s", "blocking_reason": "r"}))
     claude_code["stdout"] = _claude_envelope("I wrote the result file.")
-    result = executor.run_claude_code(tmp_path)
+    result = executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
     assert result["outcome_type"] == "blocked" and result["blocking_reason"] == "r"
 
 
-def test_claude_code_failures(claude_code, monkeypatch, tmp_path: Path):
+def test_claude_code_failures(claude_code, tmp_path: Path):
     claude_code["stdout"] = _claude_envelope("no json here")
-    assert executor.run_claude_code(tmp_path)["summary"] == "Executor produced no parseable result."
+    assert executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")["summary"] == "Executor produced no parseable result."
 
     claude_code["stdout"] = _claude_envelope("API error", is_error=True)
     claude_code["returncode"] = 1
-    result = executor.run_claude_code(tmp_path)
+    result = executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
     assert result["outcome_type"] == "failed" and result["summary"] == "Claude Code exited 1"
 
     claude_code["side_effect"] = FileNotFoundError()
-    result = executor.run_claude_code(tmp_path)
+    result = executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
     assert result["outcome_type"] == "failed" and "not found in runtime image" in result["summary"]
 
     claude_code["side_effect"] = subprocess.TimeoutExpired("claude", 3600)
-    assert executor.run_claude_code(tmp_path)["summary"] == "Claude Code timed out after 60 minutes."
+    assert executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")["summary"] == "Claude Code timed out after 60 minutes."
 
-    monkeypatch.setattr(config, "model_provider", "openai")
     claude_code.pop("cmd")
-    assert executor.run_claude_code(tmp_path)["outcome_type"] == "failed" and "cmd" not in claude_code
+    assert executor.run_claude_code(tmp_path, "openai", "gpt-5")["outcome_type"] == "failed" and "cmd" not in claude_code
+
+
+def test_claude_code_uses_the_run_model(claude_code, tmp_path: Path):
+    claude_code["stdout"] = _claude_envelope('{"outcome": "completed", "summary": "s"}')
+    executor.run_claude_code(tmp_path, "anthropic", "claude-haiku-5-5")
+    assert claude_code["cmd"][claude_code["cmd"].index("--model") + 1] == "claude-haiku-5-5"
+
+
+def test_select_model_uses_the_resolved_run_model(monkeypatch):
+    monkeypatch.setattr(config, "model_provider", "anthropic")
+    monkeypatch.setattr(config, "model_name", "claude-opus-5-5")
+    assert executor.select_model({"model": "claude-haiku-5-5", "model_provider": "anthropic"}) == \
+        ("anthropic", "claude-haiku-5-5", None)
+    # Older servers send no model: keep the launch model
+    assert executor.select_model({}) == ("anthropic", "claude-opus-5-5", None)
+
+
+def test_select_model_falls_back_without_the_provider_key(monkeypatch):
+    monkeypatch.setattr(config, "model_provider", "anthropic")
+    monkeypatch.setattr(config, "model_name", "claude-opus-5-5")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    provider, model, note = executor.select_model({"model": "gpt-5", "model_provider": "openai"})
+    assert (provider, model) == ("anthropic", "claude-opus-5-5") and "gpt-5" in note
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    assert executor.select_model({"model": "gpt-5", "model_provider": "openai"}) == ("openai", "gpt-5", None)

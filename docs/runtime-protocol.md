@@ -37,11 +37,21 @@ owner's provider key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GROQ_API_KEY`).
   "project": {"id": "…", "repo_url": "https://github.com/acme/web", "default_branch": "main", …},
   "workflow_stage": {"name": "Plan", "role": "plan", "produces": ["plan", "scenarios"],
                      "is_first": false, "is_last": false, "requires_human_approval": true},
-  "bundle": {"TASK.md": "…", "STAGE_INSTRUCTIONS.md": "…", "docs/PLAN.md": "…", …}
+  "bundle": {"TASK.md": "…", "STAGE_INSTRUCTIONS.md": "…", "docs/PLAN.md": "…", …},
+  "model": "claude-haiku-5-5",
+  "model_provider": "anthropic"
 }
 ```
 
 An empty poll returns `{"task_run": null, …}`.
+
+`model` is the model resolved for this run — the stage's model, else the
+engineer's, else the project's default, else `DEFAULT_MODEL` — and
+`model_provider` is the provider that serves it. Runtimes should run the task
+on that model and report it in the outcome's `model` field so usage is priced
+correctly. A runtime without a key for `model_provider` falls back to its
+launch model (`GRAVEL_MODEL_NAME`) and says so in the run log; runtimes that
+ignore these fields keep using their launch model.
 
 ### Outcome payload
 
@@ -79,7 +89,7 @@ are ignored.
   TASK.md                 title, requirements, acceptance criteria, source issue
   STAGE_INSTRUCTIONS.md   stage name, role, instructions (+ grounding guidance)
   COMMENTS.md             the task's comment thread
-  PROJECT_CONTEXT.md      repo, branches, model, engineer skills
+  PROJECT_CONTEXT.md      repo, branches, resolved model, engineer skills
   KNOWLEDGE.md            accepted decisions, patterns, glossary, runbooks, conventions
   QUESTIONS.md            open / answered / deferred questions with ids
   OUTPUT_CONTRACT.md      how to report the result

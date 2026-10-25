@@ -383,6 +383,8 @@ export interface WorkflowStage {
   requires_human_approval: boolean
   is_ai_executable: boolean
   stage_instructions: string | null
+  /** Model override for this stage; null inherits engineer → project → server default */
+  model: string | null
   max_rework_attempts: number
   rework_target_stage_id: string | null
   created_at: string
@@ -409,6 +411,7 @@ export interface WorkflowStageCreate {
   requires_human_approval?: boolean
   is_ai_executable?: boolean
   stage_instructions?: string | null
+  model?: string | null
   max_rework_attempts?: number
   rework_target_stage_id?: string | null
 }

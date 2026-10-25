@@ -18,13 +18,14 @@ from sqlalchemy.orm import selectinload
 
 from db.base import new_uuid
 from db.session import AsyncSessionLocal
+from models.engineer import Engineer
 from models.project import Project
 from models.sdlc import OpenQuestion, QuestionStatus
 from models.task import Task, TaskStatus
 from models.task_run import TaskComment, TaskRun, TaskRunLog, TaskRunOutcome, TaskRunPhase
 from models.user import User
 from services import orchestrator, sdlc
-from services.llm import LLMRefusal, LLMResult, call_llm, pick_provider
+from services.llm import LLMRefusal, LLMResult, call_llm, pick_provider, resolve_model
 from services.token_usage import record_usage
 from services.users import get_plain_keys
 
@@ -165,7 +166,11 @@ async def _execute_stage(db, stage, task: Task, project: Project, keys: dict
         select(OpenQuestion).where(OpenQuestion.task_id == task.id).order_by(OpenQuestion.created_at)
     )).scalars())
 
-    provider = pick_provider(keys, project.default_model)
+    # The drain runs stages itself, but an assigned engineer's model still
+    # sits in the precedence chain between the stage and the project.
+    engineer = await db.get(Engineer, stage.assigned_engineer_id) if stage.assigned_engineer_id else None
+    model = resolve_model(stage, engineer, project)
+    provider = pick_provider(keys, model)
     if provider is None:
         await asyncio.sleep(0.5)
         data = sdlc.simulated_result(role_key, task, [q for q in questions if q.status == QuestionStatus.open])
@@ -198,7 +203,7 @@ async def _execute_stage(db, stage, task: Task, project: Project, keys: dict
     )
     try:
         result = await call_llm(
-            provider, project.default_model, keys, prompt, max_tokens=16000,
+            provider, model, keys, prompt, max_tokens=16000,
             json_schema=sdlc.STAGE_RESULT_SCHEMA, effort=role["effort"], system=system,
         )
     except LLMRefusal as exc:
@@ -236,7 +241,8 @@ def _parse_json_object(text: str) -> dict | None:
 
 async def _execute_phase(phase: TaskRunPhase, task: Task, project: Project,
                          keys: dict) -> tuple[TaskRunOutcome, str, LLMResult | None]:
-    provider = pick_provider(keys, project.default_model)
+    model = resolve_model(project=project)
+    provider = pick_provider(keys, model)
     complete = orchestrator.PHASE_COMPLETE[phase]
 
     if provider is None:
@@ -253,7 +259,7 @@ async def _execute_phase(phase: TaskRunPhase, task: Task, project: Project,
         f"{PHASE_TASK_PROMPTS[phase]}"
     )
     try:
-        result = await call_llm(provider, project.default_model, keys, prompt, max_tokens=4000, effort="low")
+        result = await call_llm(provider, model, keys, prompt, max_tokens=4000, effort="low")
         return complete, result.text, result
     except Exception as exc:
         logger.warning("LLM call failed for task %s (%s): %s", task.id, phase.value, exc)

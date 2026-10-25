@@ -49,7 +49,8 @@ class Settings(BaseSettings):
     WEB_BASE_URL: str = "http://localhost:3000"
 
     # ── LLM defaults ──────────────────────────────────────────────────────────
-    # Model used when a project/engineer doesn't name one. Any id from
+    # Model used when a stage/engineer/project doesn't name one (precedence in
+    # services/llm.py resolve_model). Any id from
     # services/model_catalog.py works; keys are BYOK per user.
     DEFAULT_MODEL: str = "claude-opus-5-5"
 

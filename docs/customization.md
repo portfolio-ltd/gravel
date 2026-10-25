@@ -36,19 +36,31 @@ member's own accent choice overrides the org default.
 - Toggle the approval gate, the open-question gate, AI vs. manual execution,
   the rework target and attempt budget per stage, and optionally pin a stage
   to one engineer.
+- Pick a **model** per stage — say a cheap model for Analyze and a strong one
+  for Build — or leave it on *Inherit*.
 
 Templates and role instructions live in `apps/api/services/sdlc.py`
 (`WORKFLOW_TEMPLATES`, `STAGE_ROLES`). Adding a template is a dictionary entry.
 
 ## Models and pricing
 
-- `DEFAULT_MODEL` (env) sets the model used when a project or engineer doesn't
-  choose one.
+- A run's model is resolved as **stage → engineer → project →
+  `DEFAULT_MODEL`**: the first one set wins. Leaving a stage on *Inherit* uses
+  the engineer that claims the run, then the project's default model. The
+  in-process executor has no claiming engineer, so it uses the stage's
+  assigned engineer (if any) and then the project. The precedence lives in one
+  place, `resolve_model` in `apps/api/services/llm.py`.
+- `DEFAULT_MODEL` (env) sets the model used when nothing above chooses one.
+- An engineer runtime only holds the API key for its own provider. A stage
+  model from another provider falls back to the engineer's model, with a
+  warning in the run log.
 - The model menu shown in the UI is `apps/api/services/model_catalog.py`
   (served at `GET /api/meta`). Any id the provider accepts can still be typed
   in directly.
 - Cost estimates come from the prefix-matched price map in
-  `apps/api/services/token_usage.py` (USD per million tokens).
+  `apps/api/services/token_usage.py` (USD per million tokens). Every call is
+  recorded with the model it actually used, so per-stage models are priced
+  individually and still roll up into the task, project and org totals.
 
 ## Knowledge base
 

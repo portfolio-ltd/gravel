@@ -14,7 +14,9 @@ import { Page, SectionCard } from "@/components/ui/page"
 import { Pipeline, PipelineLegend, ROLE_STYLE, stagesFromWorkflow } from "@/components/workflow/Pipeline"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import type { StageRole, StageRoleKey, WorkflowStage, WorkflowStageCreate } from "@/types"
+import type { ModelOption, StageRole, StageRoleKey, WorkflowStage, WorkflowStageCreate } from "@/types"
+
+const PROVIDER_LABELS: Record<ModelOption["provider"], string> = { anthropic: "Anthropic", openai: "OpenAI", groq: "Groq" }
 
 function ToggleRow({ label, hint, checked, onChange, disabled }: {
   label: string; hint: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean
@@ -31,7 +33,7 @@ function ToggleRow({ label, hint, checked, onChange, disabled }: {
 }
 
 function StageCard({
-  stage, index, total, workflowId, siblings, roles,
+  stage, index, total, workflowId, siblings, roles, models,
 }: {
   stage: WorkflowStage
   index: number
@@ -39,6 +41,7 @@ function StageCard({
   workflowId: string
   siblings: WorkflowStage[]
   roles: StageRole[]
+  models: ModelOption[]
 }) {
   const { data: engineers } = useEngineers()
   const updateStage = useUpdateStage()
@@ -49,6 +52,9 @@ function StageCard({
   const [showDefaults, setShowDefaults] = useState(false)
   const role = roles.find((r) => r.key === stage.role)
   const style = ROLE_STYLE[stage.role] ?? ROLE_STYLE.custom
+  // Precedence: stage → engineer → project → server default (services/llm.py resolve_model)
+  const assignedEngineer = engineers?.find((e) => e.id === stage.assigned_engineer_id)
+  const providers = (Object.keys(PROVIDER_LABELS) as ModelOption["provider"][]).filter((p) => models.some((m) => m.provider === p))
 
   async function patch(data: Partial<WorkflowStageCreate>) {
     try {
@@ -128,7 +134,7 @@ function StageCard({
         </div>
       </div>
 
-      <div className="mb-4 grid gap-2 sm:grid-cols-2">
+      <div className="mb-4 grid gap-2 sm:grid-cols-3">
         <ToggleRow
           label="Run by AI"
           hint="Off = a manual checkpoint a human completes and approves."
@@ -147,6 +153,9 @@ function StageCard({
           checked={stage.block_on_open_questions}
           onChange={(v) => patch({ block_on_open_questions: v })}
         />
+      </div>
+
+      <div className="mb-4 grid gap-2 sm:grid-cols-2">
         <Field label="Assigned engineer">
           <Select
             value={stage.assigned_engineer_id ?? ""}
@@ -154,6 +163,29 @@ function StageCard({
           >
             <option value="">Any engineer</option>
             {(engineers ?? []).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </Select>
+        </Field>
+        <Field
+          label="Model"
+          hint={stage.model ? "Overrides the engineer and project model for this stage." : undefined}
+        >
+          <Select
+            value={stage.model ?? ""}
+            onChange={(e) => patch({ model: e.target.value || null })}
+            disabled={!stage.is_ai_executable}
+            aria-label="Stage model"
+          >
+            <option value="">
+              {assignedEngineer ? `Inherit — ${assignedEngineer.model_name}` : "Inherit — engineer or project model"}
+            </option>
+            {stage.model && !models.some((m) => m.id === stage.model) && (
+              <option value={stage.model}>{stage.model}</option>
+            )}
+            {providers.map((p) => (
+              <optgroup key={p} label={PROVIDER_LABELS[p]}>
+                {models.filter((m) => m.provider === p).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </optgroup>
+            ))}
           </Select>
         </Field>
       </div>
@@ -293,6 +325,7 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
             workflowId={id}
             siblings={stages}
             roles={roles}
+            models={meta?.models ?? []}
           />
         ))}
       </div>
@@ -324,6 +357,7 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
         Tasks flow through stages top to bottom. A <b>manual</b> stage parks the task until a human approves it.
         An <b>approval gate</b> pauses after the stage&apos;s AI run completes. A review or verification that requests
         changes counts as a failure and follows the rework target until max attempts, then waits for a human.
+        A stage <b>model</b> overrides the engineer&apos;s model, which overrides the project default.
       </p>
     </Page>
   )

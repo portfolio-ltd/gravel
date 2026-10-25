@@ -32,7 +32,8 @@ apps/api/
 - **Project** — repo, default model, optional **Workflow**, optional GitHub
   `issues_repo`.
 - **Workflow** → ordered **WorkflowStage**s (role, approval gate, open-question
-  gate, AI/manual, rework target, attempt budget, assigned engineer).
+  gate, AI/manual, rework target, attempt budget, assigned engineer, optional
+  model — runs resolve stage → engineer → project → `DEFAULT_MODEL`).
 - **Task** — status, priority, type, `acceptance_criteria` (JSON checklist with
   human/ai source), current stage, branch/PR/deploy links, external issue link.
 - **TaskRun** — one execution of a stage/phase: outcome, summary, gate state,
