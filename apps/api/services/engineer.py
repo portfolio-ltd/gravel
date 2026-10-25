@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import settings
 from db.base import new_uuid
 from models.engineer import Engineer, EngineerRuntime, EngineerStatus
 from models.task_run import TaskRun
@@ -39,7 +40,7 @@ async def get_engineer(db: AsyncSession, engineer_id: str, organization_id: str 
 async def create_engineer(db: AsyncSession, owner_id: str, name: str, template: str,
                           skills_markdown: str | None,
                           model_provider: str = "anthropic",
-                          model_name: str = "claude-sonnet-4-6",
+                          model_name: str | None = None,
                           organization_id: str | None = None) -> Engineer:
     eng = Engineer(
         id=new_uuid(),
@@ -50,7 +51,7 @@ async def create_engineer(db: AsyncSession, owner_id: str, name: str, template: 
         owner_id=owner_id,
         organization_id=organization_id,
         model_provider=model_provider,
-        model_name=model_name,
+        model_name=model_name or settings.DEFAULT_MODEL,
     )
     db.add(eng)
     await db.flush()

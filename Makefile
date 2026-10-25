@@ -1,4 +1,4 @@
-.PHONY: dev api web migrate migrate-create seed test-api test-web test lint-api lint-web lint install setup env-setup
+.PHONY: dev api web migrate migrate-create seed test-api test-runtime test-web test lint-api lint-web lint install setup env-setup
 
 ROOT_DIR := $(shell pwd)
 
@@ -14,12 +14,12 @@ env-setup:
 	@echo "✓  apps/web/.env.local → $(ROOT_DIR)/.env"
 
 install:
-	@echo "--- Creating Python 3.11 venv ---"
-	python3.11 -m venv apps/api/.venv || python3 -m venv apps/api/.venv
-	@echo "--- Installing Python deps ---"
-	apps/api/.venv/bin/pip install -r apps/api/requirements.txt
-	@echo "--- Installing Node deps ---"
-	cd apps/web && npm install
+	@echo "--- API: Python 3.12 venv (uv) ---"
+	cd apps/api && uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements.txt ruff
+	@echo "--- Runtime: Python 3.12 venv (uv) ---"
+	cd apps/runtime && uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e ".[test]"
+	@echo "--- Web: Node deps ---"
+	cd apps/web && npm ci
 
 # ── Dev servers ───────────────────────────────────────────────────────────────
 # Run each in a separate terminal.
@@ -47,10 +47,13 @@ seed:
 test-api:
 	cd apps/api && .venv/bin/python -m pytest tests/ -q
 
-test-web:
-	cd apps/web && npm run test
+test-runtime:
+	cd apps/runtime && .venv/bin/python -m pytest -q
 
-test: test-api test-web
+test-web:
+	cd apps/web && npx tsc --noEmit && npm run test
+
+test: test-api test-runtime test-web
 
 # ── Lint ──────────────────────────────────────────────────────────────────────
 lint-api:

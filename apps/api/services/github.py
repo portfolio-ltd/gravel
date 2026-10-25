@@ -19,13 +19,26 @@ def _headers(token: str) -> dict:
     }
 
 
-def _parse_repo(repo_url: str) -> tuple[str, str]:
-    """Extract owner/repo from https://github.com/owner/repo[.git]"""
-    path = repo_url.rstrip("/").rstrip(".git")
-    parts = path.split("github.com/")[-1].split("/")
+def normalize_repo(value: str) -> str:
+    """'owner/repo' from a URL, SSH remote, or 'owner/repo' string."""
+    v = value.strip()
+    if v.startswith("git@"):
+        v = v.split(":", 1)[-1]
+    if "github.com/" in v:
+        v = v.split("github.com/", 1)[-1]
+    v = v.split("?", 1)[0].split("#", 1)[0].strip("/")
+    if v.endswith(".git"):
+        v = v[: -len(".git")]
+    parts = [p for p in v.split("/") if p]
     if len(parts) < 2:
-        raise ValueError(f"Invalid GitHub repo URL: {repo_url}")
-    return parts[0], parts[1]
+        raise ValueError(f"Not a GitHub repository: {value!r}")
+    return f"{parts[0]}/{parts[1]}"
+
+
+def _parse_repo(repo_url: str) -> tuple[str, str]:
+    """Extract (owner, repo) from https://github.com/owner/repo[.git] and friends."""
+    owner, repo = normalize_repo(repo_url).split("/")
+    return owner, repo
 
 
 async def verify_access(repo_url: str, token: str) -> dict:
@@ -89,3 +102,31 @@ async def list_branches(repo_url: str, token: str) -> list[str]:
         if resp.status_code == 200:
             return [b["name"] for b in resp.json()]
         return []
+
+
+async def list_issues(repo: str, token: str | None, state: str = "open",
+                      labels: str | None = None, limit: int = 50) -> list[dict]:
+    """Issues (not pull requests) from a repo, newest first."""
+    owner, name = _parse_repo(repo)
+    params = {"state": state, "per_page": min(limit, 100), "sort": "created", "direction": "desc"}
+    if labels:
+        params["labels"] = labels
+    headers = _headers(token) if token else {"Accept": "application/vnd.github.v3+json"}
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(f"{GITHUB_API}/repos/{owner}/{name}/issues", headers=headers, params=params)
+    if resp.status_code != 200:
+        raise RuntimeError(f"GitHub returned {resp.status_code}: {resp.text[:200]}")
+    return [i for i in resp.json() if "pull_request" not in i][:limit]
+
+
+async def post_issue_comment(repo: str, token: str, number: int, body: str) -> bool:
+    owner, name = _parse_repo(repo)
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            f"{GITHUB_API}/repos/{owner}/{name}/issues/{number}/comments",
+            headers=_headers(token), json={"body": body},
+        )
+    if resp.status_code >= 300:
+        logger.warning("GitHub comment on %s#%s failed: %s", repo, number, resp.status_code)
+        return False
+    return True

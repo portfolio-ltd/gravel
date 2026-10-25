@@ -81,6 +81,13 @@ class OutcomeReport(BaseModel):
     tokens_in: int | None = None
     tokens_out: int | None = None
     model: str | None = None
+    # Optional structured stage results (services/sdlc.py STAGE_RESULT_SCHEMA)
+    verdict: str | None = None
+    documents: list[dict] = []
+    acceptance_criteria: list[str] | None = None
+    open_questions: list[dict] = []
+    resolved_questions: list[dict] = []
+    knowledge: list[dict] = []
 
 
 class PollTask(BaseModel):
@@ -111,6 +118,8 @@ class PollStage(BaseModel):
     is_first: bool
     is_last: bool
     requires_human_approval: bool
+    role: str = "custom"
+    produces: list[str] = []
 
     model_config = {"from_attributes": True}
 
@@ -130,3 +139,6 @@ class LogSubmit(BaseModel):
 
 class ApproveReject(BaseModel):
     note: str | None = None
+    # Reject only: True = request changes (re-run), False = stop at pending,
+    # None = rework for workflow stages, stop for the legacy phase pipeline
+    rework: bool | None = None

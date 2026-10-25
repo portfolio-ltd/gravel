@@ -79,7 +79,7 @@ async def refresh(body: RefreshRequest, db: DB):
     if not result:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token.")
     access, new_refresh = result
-    return AccessTokenResponse(access_token=access)
+    return AccessTokenResponse(access_token=access, refresh_token=new_refresh)
 
 
 @router.post("/logout", status_code=204)

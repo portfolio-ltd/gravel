@@ -7,7 +7,7 @@ class RuntimeConfig(BaseSettings):
     runtime_id: str = ""
     runtime_token: str = ""
     model_provider: str = "anthropic"
-    model_name: str = "claude-sonnet-4-6"
+    model_name: str = "claude-opus-5-5"
     poll_interval_seconds: int = 15
     heartbeat_interval_seconds: int = 60
     workspace_dir: str = "/tmp/gravel-runtime"

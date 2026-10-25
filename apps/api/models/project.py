@@ -1,9 +1,10 @@
 import enum
 
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from config import settings
 from db.base import BaseModel
 
 
@@ -28,12 +29,16 @@ class Project(BaseModel):
     # owner_id is "created by"; organization_id scopes access
     owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     organization_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
-    default_model: Mapped[str] = mapped_column(String(100), default="claude-sonnet-4-6", nullable=False)
+    default_model: Mapped[str] = mapped_column(String(100), default=settings.DEFAULT_MODEL, nullable=False)
     repo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     default_branch: Mapped[str] = mapped_column(String(100), default="main", nullable=False)
     workflow_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("workflows.id", ondelete="SET NULL"), nullable=True
     )
+    # GitHub Issues sync: "owner/repo" to import from, and whether stage
+    # results are posted back to the issue as comments
+    issues_repo: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    post_issue_comments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     owner = relationship("User", back_populates="projects")
     design_files = relationship("ProjectDesignFile", back_populates="project", cascade="all, delete-orphan")

@@ -54,13 +54,25 @@ def prepare_workspace(task_id: str, repo_url: str | None, branch: str) -> Path:
 
 
 def checkout_branch(root: Path, branch: str, create: bool) -> str:
+    """Check out the task branch, continuing from origin's copy when it exists.
+
+    Later stages (review, verify, rework builds) must see the work earlier
+    stages pushed, so an existing remote branch always wins over a fresh one
+    cut from the default branch.
+    """
     if not (root / ".git").exists():
         return branch
-    args = ["checkout", "-B", branch] if create else ["checkout", branch]
-    result = _run_git(args, cwd=str(root))
-    if result.returncode != 0 and not create:
-        # Branch may not exist yet — create it
+    fetched = _run_git(
+        ["fetch", "--depth", "50", "origin", f"+refs/heads/{branch}:refs/remotes/origin/{branch}"], cwd=str(root)
+    ).returncode == 0
+    if fetched:
+        result = _run_git(["checkout", "-B", branch, f"origin/{branch}"], cwd=str(root))
+    elif create:
         result = _run_git(["checkout", "-B", branch], cwd=str(root))
+    else:
+        result = _run_git(["checkout", branch], cwd=str(root))
+        if result.returncode != 0:  # branch may not exist yet — create it
+            result = _run_git(["checkout", "-B", branch], cwd=str(root))
     if result.returncode != 0:
         raise RuntimeError(f"git checkout failed: {result.stderr.strip()}")
     return branch
@@ -81,6 +93,28 @@ def commit_and_push(root: Path, branch: str, message: str) -> bool:
     return commit.returncode == 0
 
 
-def write_bundle(root: Path, bundle: dict[str, str]) -> None:
+BUNDLE_DIR = ".gravel"
+
+
+def write_bundle(root: Path, bundle: dict[str, str]) -> Path:
+    """Write the task bundle into <repo>/.gravel/ and keep it out of git.
+
+    The exclusion goes in .git/info/exclude (local to this clone), so the
+    user's .gitignore is never modified and bundle files are never committed.
+    """
+    base = root / BUNDLE_DIR
+    if base.exists():
+        shutil.rmtree(base)
+    (base / "output").mkdir(parents=True)
     for filename, content in bundle.items():
-        (root / filename).write_text(content)
+        target = (base / filename).resolve()
+        if base.resolve() not in target.parents:
+            continue  # never write outside the bundle directory
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+    exclude = root / ".git" / "info" / "exclude"
+    if exclude.parent.exists():
+        current = exclude.read_text() if exclude.exists() else ""
+        if f"/{BUNDLE_DIR}/" not in current.splitlines():
+            exclude.write_text(current.rstrip("\n") + f"\n/{BUNDLE_DIR}/\n")
+    return base

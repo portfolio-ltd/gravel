@@ -5,6 +5,7 @@ from dependencies import DB, CurrentOrg, CurrentUser
 from schemas.workflow import (
     StageReorderRequest,
     WorkflowCreate,
+    WorkflowFromTemplate,
     WorkflowOut,
     WorkflowStageCreate,
     WorkflowStageOut,
@@ -23,6 +24,19 @@ async def list_workflows(current_user: CurrentUser, org: CurrentOrg, db: DB):
 @router.post("", response_model=WorkflowOut, status_code=201)
 async def create_workflow(body: WorkflowCreate, current_user: CurrentUser, org: CurrentOrg, db: DB):
     return await wf_service.create_workflow(db, current_user.id, body, organization_id=org.id)
+
+
+@router.get("/templates")
+async def list_templates(current_user: CurrentUser):
+    from services.sdlc import WORKFLOW_TEMPLATES
+    return [{"key": k, "name": t["name"], "description": t["description"], "recommended": t["recommended"],
+             "stages": t["stages"]} for k, t in WORKFLOW_TEMPLATES.items()]
+
+
+@router.post("/from-template", response_model=WorkflowOut, status_code=201)
+async def create_from_template(body: WorkflowFromTemplate, current_user: CurrentUser, org: CurrentOrg, db: DB):
+    from services.sdlc import instantiate_template
+    return await instantiate_template(db, body.template_key, current_user.id, org.id, name=body.name)
 
 
 @router.get("/{workflow_id}", response_model=WorkflowOut)

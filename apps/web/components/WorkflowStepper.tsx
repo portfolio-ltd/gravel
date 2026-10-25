@@ -37,20 +37,20 @@ export default function WorkflowStepper({ status, className }: WorkflowStepperPr
             <div className="flex flex-col items-center gap-1">
               <div className={cn(
                 "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all",
-                done   ? "bg-emerald-500 border-emerald-500 text-white"
+                done   ? "bg-success border-success text-success-foreground"
                        : active ? "bg-primary border-primary text-primary-foreground"
                        : "bg-background border-border text-muted-foreground"
               )}>
                 {done ? <Check className="w-3.5 h-3.5" /> : i + 1}
               </div>
               <span className={cn("text-[10px] font-medium whitespace-nowrap",
-                active ? "text-foreground" : done ? "text-emerald-600" : "text-muted-foreground"
+                active ? "text-foreground" : done ? "text-success" : "text-muted-foreground"
               )}>{step.label}</span>
             </div>
             {i < STEPS.length - 1 && (
               <div className={cn(
                 "h-0.5 w-8 mx-1 mb-4 transition-all",
-                idx < current ? "bg-emerald-400" : "bg-border"
+                idx < current ? "bg-success/60" : "bg-border"
               )} />
             )}
           </div>

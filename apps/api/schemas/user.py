@@ -12,6 +12,7 @@ class UserOut(BaseModel):
     role: UserRole
     is_active: bool
     email_verified_at: datetime | None = None
+    preferences: dict | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -20,6 +21,10 @@ class UserOut(BaseModel):
 class UserUpdate(BaseModel):
     name: str | None = None
     role: UserRole | None = None
+
+
+class PreferencesIn(BaseModel):
+    preferences: dict
 
 
 class ApiKeysIn(BaseModel):

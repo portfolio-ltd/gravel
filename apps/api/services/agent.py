@@ -8,7 +8,9 @@ orchestrator gate machinery the real runtimes use. Without any API key the
 executor produces simulated outcomes so the workflow stays demoable.
 """
 import asyncio
+import json
 import logging
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -17,11 +19,12 @@ from sqlalchemy.orm import selectinload
 from db.base import new_uuid
 from db.session import AsyncSessionLocal
 from models.project import Project
+from models.sdlc import OpenQuestion, QuestionStatus
 from models.task import Task, TaskStatus
-from models.task_run import TaskRun, TaskRunLog, TaskRunOutcome, TaskRunPhase
+from models.task_run import TaskComment, TaskRun, TaskRunLog, TaskRunOutcome, TaskRunPhase
 from models.user import User
-from services import orchestrator
-from services.llm import LLMResult, call_llm, pick_provider
+from services import orchestrator, sdlc
+from services.llm import LLMRefusal, LLMResult, call_llm, pick_provider
 from services.token_usage import record_usage
 from services.users import get_plain_keys
 
@@ -113,8 +116,9 @@ async def drain_project(project_id: str, user_id: str) -> None:
                 user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
                 keys = get_plain_keys(user) if user else {}
 
+                artifacts = None
                 if stage:
-                    outcome, summary, usage = await _execute_stage(stage, task, project, keys)
+                    outcome, summary, usage, artifacts = await _execute_stage(db, stage, task, project, keys)
                 else:
                     outcome, summary, usage = await _execute_phase(run.phase, task, project, keys)
 
@@ -131,7 +135,7 @@ async def drain_project(project_id: str, user_id: str) -> None:
                     message=summary[:4000] if summary else f"{run.phase.value} finished",
                     level="info" if outcome != TaskRunOutcome.failed else "error",
                 ))
-                await orchestrator.apply_outcome(db, run, outcome, summary=summary)
+                await orchestrator.apply_outcome(db, run, outcome, summary=summary, artifacts=artifacts)
                 await db.commit()
     finally:
         _running.discard(project_id)
@@ -145,33 +149,89 @@ PHASE_TASK_PROMPTS = {
 }
 
 
-async def _execute_stage(stage, task: Task, project: Project,
-                         keys: dict) -> tuple[TaskRunOutcome, str, LLMResult | None]:
-    """Execute a custom workflow stage in-process (one LLM call, or simulated)."""
+_RESULT_OUTCOMES = {
+    "needs_human_input": TaskRunOutcome.needs_human_input,
+    "blocked": TaskRunOutcome.blocked,
+    "failed": TaskRunOutcome.failed,
+}
+
+
+async def _execute_stage(db, stage, task: Task, project: Project, keys: dict
+                         ) -> tuple[TaskRunOutcome, str, LLMResult | None, sdlc.StageArtifacts | None]:
+    """Execute a workflow stage in-process: one structured LLM call, or simulated."""
+    role_key = stage.role or "custom"
+    role = sdlc.role_of(stage)
+    questions = list((await db.execute(
+        select(OpenQuestion).where(OpenQuestion.task_id == task.id).order_by(OpenQuestion.created_at)
+    )).scalars())
+
     provider = pick_provider(keys, project.default_model)
     if provider is None:
-        await asyncio.sleep(1.0)
-        return TaskRunOutcome.build_complete, (
-            f"[simulated stage '{stage.name}'] {task.title} — configure an API key in "
-            "Settings → API Keys for real LLM execution."
-        ), None
+        await asyncio.sleep(0.5)
+        data = sdlc.simulated_result(role_key, task, [q for q in questions if q.status == QuestionStatus.open])
+        return _result_outcome(data), data["summary"], None, sdlc.StageArtifacts.from_payload(data)
 
-    instructions = stage.stage_instructions or (
-        f"Complete the workflow stage '{stage.name}' for this task. "
-        "Describe the work performed and its result. Keep it under 200 words."
+    comments = list((await db.execute(
+        select(TaskComment).where(TaskComment.task_id == task.id).order_by(TaskComment.created_at)
+    )).scalars())
+    files = await sdlc.bundle_files(db, task, project)
+    files.pop("OUTPUT_CONTRACT.md", None)
+    context = "\n\n".join(f"---- .gravel/{name} ----\n{body}" for name, body in files.items())
+    thread = "\n".join(f"- [{c.author_type.value}] {c.body}" for c in comments[-30:]) or "- No comments."
+    produces = ", ".join(k.value for k in role["produces"]) or "none required"
+    system = (
+        f"You are a senior software engineer on the project '{project.name}', carrying out one stage "
+        "of a delivery workflow. You are running without repository access: reason from the material "
+        "provided, and when a stage would normally touch code, describe precisely what you would change. "
+        "Never invent requirements or answers — record unknowns as open questions with an owner."
     )
     prompt = (
-        f"You are an AI software engineer working on project '{project.name}'.\n\n"
-        f"Task: {task.title}\n"
-        f"Description: {task.description or 'n/a'}\n\n"
-        f"Current workflow stage: {stage.name}\n{instructions}"
+        f"# Stage: {stage.name}\n\n{sdlc.stage_instructions(stage)}\n\n"
+        f"Documents this stage is expected to produce: {produces}.\n\n"
+        f"# Task: {task.title}\n\n{task.description or 'No description provided.'}\n\n"
+        f"## Acceptance criteria\n{sdlc.render_criteria(task)}\n\n"
+        f"## Comment thread\n{thread}\n\n{context}\n\n"
+        "Reply with a single JSON object matching the stage result schema: outcome, summary, "
+        "blocking_reason, verdict (pass | changes_requested | none), documents, acceptance_criteria "
+        "(complete revised list, or empty to leave unchanged), open_questions, resolved_questions "
+        "(ids from QUESTIONS.md), knowledge."
     )
     try:
-        result = await call_llm(provider, project.default_model, keys, prompt, max_tokens=500)
-        return TaskRunOutcome.build_complete, result.text, result
+        result = await call_llm(
+            provider, project.default_model, keys, prompt, max_tokens=16000,
+            json_schema=sdlc.STAGE_RESULT_SCHEMA, effort=role["effort"], system=system,
+        )
+    except LLMRefusal as exc:
+        return TaskRunOutcome.needs_human_input, str(exc), None, None
     except Exception as exc:
         logger.warning("LLM call failed for task %s (stage %s): %s", task.id, stage.name, exc)
-        return TaskRunOutcome.failed, f"LLM call failed: {exc}", None
+        return TaskRunOutcome.failed, f"LLM call failed: {exc}", None, None
+
+    data = _parse_json_object(result.text)
+    if data is None:
+        return TaskRunOutcome.build_complete, result.text, result, None
+    artifacts = sdlc.StageArtifacts.from_payload(data)
+    summary = str(data.get("summary") or "").strip() or f"{stage.name} finished"
+    outcome = _result_outcome(data)
+    if outcome != TaskRunOutcome.build_complete and data.get("blocking_reason"):
+        summary = f"{summary}\n\n{data['blocking_reason']}"
+    return outcome, summary, result, artifacts
+
+
+def _result_outcome(data: dict) -> TaskRunOutcome:
+    return _RESULT_OUTCOMES.get(str(data.get("outcome")), TaskRunOutcome.build_complete)
+
+
+def _parse_json_object(text: str) -> dict | None:
+    text = re.sub(r"^```(?:json)?|```$", "", (text or "").strip(), flags=re.MULTILINE).strip()
+    for candidate in (text, text[text.find("{"): text.rfind("}") + 1]):
+        try:
+            data = json.loads(candidate)
+            if isinstance(data, dict):
+                return data
+        except (json.JSONDecodeError, ValueError):
+            continue
+    return None
 
 
 async def _execute_phase(phase: TaskRunPhase, task: Task, project: Project,
@@ -193,7 +253,7 @@ async def _execute_phase(phase: TaskRunPhase, task: Task, project: Project,
         f"{PHASE_TASK_PROMPTS[phase]}"
     )
     try:
-        result = await call_llm(provider, project.default_model, keys, prompt, max_tokens=500)
+        result = await call_llm(provider, project.default_model, keys, prompt, max_tokens=4000, effort="low")
         return complete, result.text, result
     except Exception as exc:
         logger.warning("LLM call failed for task %s (%s): %s", task.id, phase.value, exc)

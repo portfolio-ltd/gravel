@@ -8,14 +8,23 @@ from db.base import new_uuid
 from models.task import Task
 from models.token_usage import TokenUsage
 
-# USD per 1M tokens: model → (input, output). Prefix-matched; unknown models
-# cost 0. Edit freely — this is the single pricing edit point.
+# USD per 1M tokens: model → (input, output). Prefix-matched in order, so
+# list specific ids before their family prefix; unknown models cost 0.
+# Edit freely — this is the single pricing edit point.
 MODEL_PRICES: dict[str, tuple[float, float]] = {
+    "claude-fable-5": (10.00, 50.00),
+    "claude-opus-5-5": (4.00, 20.00),
+    "claude-opus-5": (5.00, 25.00),
+    "claude-opus-4-8": (5.00, 25.00),
+    "claude-opus-4-7": (5.00, 25.00),
+    "claude-opus-4-6": (5.00, 25.00),
+    "claude-opus": (15.00, 75.00),
+    "claude-sonnet-5": (2.00, 10.00),
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-sonnet": (3.00, 15.00),
+    "claude-haiku-5-5": (0.10, 0.50),
     "claude-haiku": (1.00, 5.00),
-    "claude-opus": (15.00, 75.00),
-    "claude": (3.00, 15.00),
+    "claude": (4.00, 20.00),
     "gpt-5": (1.25, 10.00),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),

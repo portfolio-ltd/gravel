@@ -2,56 +2,155 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Theme tokens. Values are HSL triplets consumed as hsl(var(--x) / alpha).
+ * --primary / --ring are overwritten at runtime from the user's accent color
+ * (lib/theme.ts); everything else follows light/dark mode.
+ */
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 224 25% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 224 25% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 25% 10%;
     --primary: 262 83% 58%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 224 25% 14%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 44%;
+    --accent: 220 14% 95%;
+    --accent-foreground: 224 25% 14%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 62% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 35 92% 45%;
+    --warning-foreground: 0 0% 100%;
+    --info: 210 90% 52%;
+    --info-foreground: 0 0% 100%;
+    --border: 220 13% 90%;
+    --input: 220 13% 88%;
     --ring: 262 83% 58%;
+    --sidebar: 220 20% 98%;
+    --sidebar-foreground: 224 20% 20%;
+    --sidebar-border: 220 13% 91%;
     --radius: 0.75rem;
+    --font-sans: var(--font-inter);
+    --font-mono: var(--font-jetbrains);
+    color-scheme: light;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --primary: 262 83% 65%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 262 83% 65%;
+    --background: 228 16% 7%;
+    --foreground: 220 20% 94%;
+    --card: 228 15% 9.5%;
+    --card-foreground: 220 20% 94%;
+    --popover: 228 15% 10.5%;
+    --popover-foreground: 220 20% 94%;
+    --secondary: 228 12% 15%;
+    --secondary-foreground: 220 20% 92%;
+    --muted: 228 12% 14%;
+    --muted-foreground: 220 10% 62%;
+    --accent: 228 12% 16%;
+    --accent-foreground: 220 20% 94%;
+    --destructive: 0 72% 58%;
+    --success: 152 55% 48%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 30 50% 10%;
+    --info: 210 90% 62%;
+    --border: 228 11% 18%;
+    --input: 228 11% 22%;
+    --sidebar: 228 17% 8.5%;
+    --sidebar-foreground: 220 15% 82%;
+    --sidebar-border: 228 11% 15%;
+    color-scheme: dark;
+  }
+
+  /* Interface density scales every rem-based size at once */
+  html[data-density="compact"] { font-size: 14px; }
+  html[data-density="default"] { font-size: 15px; }
+  html[data-density="comfortable"] { font-size: 16px; }
+
+  html[data-radius="sharp"] { --radius: 0.375rem; }
+  html[data-radius="default"] { --radius: 0.75rem; }
+  html[data-radius="round"] { --radius: 1.1rem; }
+
+  html[data-font="inter"] { --font-sans: var(--font-inter); }
+  html[data-font="geist"] { --font-sans: var(--font-geist); }
+  html[data-font="plex"] { --font-sans: var(--font-plex); }
+  html[data-font="system"] { --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+  html[data-motion="reduce"] *,
+  html[data-motion="reduce"] *::before,
+  html[data-motion="reduce"] *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
 @layer base {
   * { @apply border-border; }
   body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1, "cv11" 1;
+  }
+  ::selection { background: hsl(var(--primary) / 0.22); }
+  :focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+}
+
+@layer components {
+  /* Subtle accent glow used on hero areas and empty states */
+  .bg-glow {
+    background-image:
+      radial-gradient(60rem 30rem at 10% -10%, hsl(var(--primary) / 0.10), transparent 60%),
+      radial-gradient(40rem 24rem at 100% 0%, hsl(var(--info) / 0.07), transparent 60%);
+  }
+  .bg-grid {
+    background-image:
+      linear-gradient(hsl(var(--border) / 0.6) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.6) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .surface {
+    @apply rounded-xl border bg-card text-card-foreground;
+  }
+  .kbd {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-[10px] text-muted-foreground;
+  }
+  .text-gradient {
+    background-image: linear-gradient(120deg, hsl(var(--primary)), hsl(var(--info)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 }
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Thin, theme-aware scrollbars */
+* { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
+
+/* Rendered markdown (task documents, knowledge base, PRDs) */
+.prose-gravel { @apply text-sm leading-relaxed; }
+.prose-gravel > * + * { @apply mt-3; }
+.prose-gravel h1 { @apply text-lg font-semibold tracking-tight; }
+.prose-gravel h2 { @apply mt-5 text-base font-semibold tracking-tight; }
+.prose-gravel h3 { @apply mt-4 text-sm font-semibold; }
+.prose-gravel ul { @apply list-disc space-y-1 pl-5; }
+.prose-gravel ol { @apply list-decimal space-y-1 pl-5; }
+.prose-gravel li > ul, .prose-gravel li > ol { @apply mt-1; }
+.prose-gravel a { @apply text-primary underline underline-offset-2; }
+.prose-gravel strong { @apply font-semibold; }
+.prose-gravel code { @apply rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]; }
+.prose-gravel pre { @apply overflow-x-auto rounded-lg border bg-muted/60 p-3 font-mono text-xs; }
+.prose-gravel pre code { @apply bg-transparent p-0; }
+.prose-gravel blockquote { @apply border-l-2 border-primary/40 pl-3 text-muted-foreground; }
+.prose-gravel table { @apply w-full border-collapse text-xs; }
+.prose-gravel th { @apply border-b bg-muted/50 px-2 py-1.5 text-left font-semibold; }
+.prose-gravel td { @apply border-b px-2 py-1.5 align-top; }
+.prose-gravel hr { @apply my-4 border-border; }
+.prose-gravel input[type="checkbox"] { @apply mr-1.5 align-middle accent-[hsl(var(--primary))]; }

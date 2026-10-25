@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from models.task import TaskPriority, TaskStatus, TaskType
 from schemas.tag import TagOut
@@ -12,6 +12,7 @@ class TaskCreate(BaseModel):
     priority: TaskPriority = TaskPriority.medium
     type: TaskType = TaskType.feature
     position: int = 0
+    acceptance_criteria: list[str] | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -25,6 +26,16 @@ class TaskUpdate(BaseModel):
 class TaskReorderItem(BaseModel):
     id: str
     position: int
+
+
+class CriterionIn(BaseModel):
+    id: str | None = None
+    text: str
+    done: bool = False
+
+
+class CriteriaUpdate(BaseModel):
+    items: list[CriterionIn]
 
 
 class TaskOut(BaseModel):
@@ -41,8 +52,17 @@ class TaskOut(BaseModel):
     deploy_url: str | None = None
     workflow_stage_id: str | None = None
     rework_count: int = 0
+    acceptance_criteria: list[dict] = []
+    external_source: str | None = None
+    external_id: str | None = None
+    external_url: str | None = None
     tags: list[TagOut] = []
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("acceptance_criteria", mode="before")
+    @classmethod
+    def _none_as_empty(cls, v):
+        return v or []

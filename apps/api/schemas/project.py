@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from config import settings
 from models.project import ProjectStatus
 from schemas.changelog import ChangelogOut
 from schemas.task import TaskOut
@@ -11,10 +12,15 @@ from schemas.task import TaskOut
 
 class ProjectCreate(BaseModel):
     name: str
-    default_model: str = "claude-sonnet-4-6"
+    default_model: str = settings.DEFAULT_MODEL
     repo_url: str | None = None
     default_branch: str = "main"
     workflow_id: str | None = None
+    # Built-in workflow template key (services/sdlc.py); reuses or creates the
+    # org's workflow for it. Ignored when workflow_id is given.
+    workflow_template: str | None = None
+    issues_repo: str | None = None
+    post_issue_comments: bool = False
 
 
 class ProjectUpdate(BaseModel):
@@ -23,6 +29,8 @@ class ProjectUpdate(BaseModel):
     repo_url: str | None = None
     default_branch: str | None = None
     workflow_id: str | None = None
+    issues_repo: str | None = None
+    post_issue_comments: bool | None = None
 
 
 class DesignFileOut(BaseModel):
@@ -44,6 +52,8 @@ class ProjectOut(BaseModel):
     repo_url: str | None = None
     default_branch: str = "main"
     workflow_id: str | None = None
+    issues_repo: str | None = None
+    post_issue_comments: bool = False
     created_at: datetime
     updated_at: datetime
     design_files: list[DesignFileOut] = []

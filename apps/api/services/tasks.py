@@ -1,6 +1,7 @@
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.base import new_uuid
 from models.project import Project
 from models.task import Task, TaskStatus
 from schemas.task import TaskCreate, TaskReorderItem, TaskUpdate
@@ -21,7 +22,13 @@ async def get_task(db: AsyncSession, task_id: str, project_id: str) -> Task | No
 
 
 async def create_task(db: AsyncSession, project_id: str, data: TaskCreate) -> Task:
-    t = Task(project_id=project_id, **data.model_dump())
+    fields = data.model_dump(exclude={"acceptance_criteria"})
+    t = Task(project_id=project_id, **fields)
+    if data.acceptance_criteria:
+        t.acceptance_criteria = [
+            {"id": new_uuid()[:8], "text": c.strip(), "done": False, "source": "human"}
+            for c in data.acceptance_criteria if c.strip()
+        ]
     t.tags = []  # initialize so serialization never lazy-loads a fresh instance
     db.add(t)
     await db.flush()

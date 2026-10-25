@@ -9,9 +9,10 @@ from models.task import Task, TaskPriority, TaskStatus, TaskType
 from models.task_run import TaskComment
 from schemas.task_run import PollResponse
 from services import agent as agent_svc
-from services import orchestrator
+from services import orchestrator, sdlc
 from services.parser import parse_prd
 from services.projects import get_project
+from services.sdlc import merge_ai_criteria
 from services.users import get_plain_keys
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -51,11 +52,14 @@ async def poll_next_task(
                 id=stage.id, name=stage.name, stage_order=stage.stage_order,
                 is_first=idx == 0, is_last=idx == len(stages) - 1,
                 requires_human_approval=stage.requires_human_approval,
+                role=stage.role or "custom",
+                produces=[k.value for k in sdlc.role_of(stage)["produces"]],
             )
 
     bundle = orchestrator.build_task_bundle(
         task, project, engineer, comments, run.phase, stage=stage, stage_position=stage_position
     )
+    bundle.update(await sdlc.bundle_files(db, task, project))
     return PollResponse(task_run=run, task=task, project=project, bundle=bundle, workflow_stage=poll_stage)
 
 
@@ -103,6 +107,7 @@ async def parse_prd_endpoint(body: ParseRequest, current_user: CurrentUser, org:
         except ValueError:
             task_type = TaskType.feature
 
+        criteria = [str(c) for c in (t.get("acceptance_criteria") or []) if str(c).strip()]
         task = Task(
             project_id=body.project_id,
             title=t.get("title", "Untitled")[:300],
@@ -110,6 +115,7 @@ async def parse_prd_endpoint(body: ParseRequest, current_user: CurrentUser, org:
             priority=priority,
             type=task_type,
             position=i,
+            acceptance_criteria=merge_ai_criteria(None, criteria) if criteria else None,
         )
         db.add(task)
 

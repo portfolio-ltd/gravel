@@ -22,6 +22,25 @@ export function useProjectSocket(projectId: string | null) {
         case "task.created":
           qc.invalidateQueries({ queryKey: ["tasks", projectId] })
           qc.invalidateQueries({ queryKey: ["project", projectId] })
+          qc.invalidateQueries({ queryKey: ["board"] })
+          if (typeof (msg.task as { id?: string } | undefined)?.id === "string") {
+            qc.invalidateQueries({ queryKey: ["task-runs", (msg.task as { id: string }).id] })
+          }
+          break
+        case "task.artifacts":
+          // A stage produced documents / criteria / questions, or a human edited them
+          if (typeof msg.task_id === "string") {
+            qc.invalidateQueries({ queryKey: ["task-documents", msg.task_id] })
+            qc.invalidateQueries({ queryKey: ["task-questions", msg.task_id] })
+          }
+          qc.invalidateQueries({ queryKey: ["tasks", projectId] })
+          qc.invalidateQueries({ queryKey: ["project", projectId] })
+          qc.invalidateQueries({ queryKey: ["knowledge"] })
+          break
+        case "tasks.imported":
+          qc.invalidateQueries({ queryKey: ["tasks", projectId] })
+          qc.invalidateQueries({ queryKey: ["project", projectId] })
+          qc.invalidateQueries({ queryKey: ["board"] })
           break
         case "project.status_changed":
           qc.invalidateQueries({ queryKey: ["projects"] })

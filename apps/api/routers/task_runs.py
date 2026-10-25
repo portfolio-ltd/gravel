@@ -19,7 +19,7 @@ from schemas.task_run import (
     TaskRunDetail,
 )
 from services import agent as agent_svc
-from services import orchestrator
+from services import orchestrator, sdlc
 
 router = APIRouter(tags=["task_runs"])
 
@@ -64,6 +64,9 @@ async def approve(run_id: str, body: ApproveReject, db: AsyncSession = Depends(g
     run = await run_svc.get_run(db, run_id)
     if not run.approval_required or run.approved_at is not None:
         raise HTTPException(400, "This run is not awaiting approval")
+    blocker = await orchestrator.approval_blocker(db, run)
+    if blocker:
+        raise HTTPException(409, blocker)
     run = await orchestrator.advance_after_approval(db, run, body.note)
     task, project = await _project_for_run(db, run)
     result = await run_svc.get_run(db, run_id)
@@ -78,9 +81,16 @@ async def approve(run_id: str, body: ApproveReject, db: AsyncSession = Depends(g
 
 @router.post("/task-runs/{run_id}/reject", response_model=TaskRunDetail)
 async def reject(run_id: str, body: ApproveReject, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), org: Organization = Depends(get_current_org)):
-    await _run_in_org_or_404(db, run_id, org)
-    run = await run_svc.reject_run(db, run_id, body.note)
-    return await run_svc.get_run(db, run_id)
+    run = await _run_in_org_or_404(db, run_id, org)
+    if not run.approval_required or run.approved_at is not None:
+        raise HTTPException(400, "This run is not awaiting approval")
+    await run_svc.reject_run(db, run_id, body.note, rework=body.rework, author_id=current_user.id)
+    result = await run_svc.get_run(db, run_id)
+    task, project = await _project_for_run(db, result)
+    if not await orchestrator.has_active_runtimes(db, project.organization_id):
+        await db.commit()  # make any rework run visible to the drain worker's session
+        agent_svc.schedule_drain(project.id, project.owner_id)
+    return result
 
 
 # Runtime-facing endpoints — authenticated by the runtime's launch token
@@ -126,6 +136,7 @@ async def agent_outcome(
         branch_name=body.branch_name,
         pr_url=body.pr_url,
         deploy_url=body.deploy_url,
+        artifacts=sdlc.StageArtifacts.from_payload(body.model_dump()),
     )
     if body.tokens_in or body.tokens_out:
         from services.token_usage import record_usage
@@ -158,7 +169,7 @@ async def add_comment(task_id: str, body: CommentCreate, db: AsyncSession = Depe
 @router.delete("/tasks/{task_id}/comments/{comment_id}", status_code=204)
 async def delete_comment(task_id: str, comment_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), org: Organization = Depends(get_current_org)):
     await _task_in_org_or_404(db, task_id, org)
-    ok = await run_svc.delete_comment(db, comment_id)
+    ok = await run_svc.delete_comment(db, task_id, comment_id)
     if not ok:
         raise HTTPException(404, "Comment not found")
 
@@ -199,7 +210,9 @@ async def list_artifacts(run_id: str, db: AsyncSession = Depends(get_db), curren
 
 
 @router.delete("/artifacts/{artifact_id}", status_code=204)
-async def delete_artifact(artifact_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    ok = await run_svc.delete_artifact(db, artifact_id)
-    if not ok:
+async def delete_artifact(artifact_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), org: Organization = Depends(get_current_org)):
+    art = await run_svc.get_artifact(db, artifact_id)
+    if not art:
         raise HTTPException(404, "Artifact not found")
+    await _run_in_org_or_404(db, art.task_run_id, org)
+    await run_svc.delete_artifact(db, artifact_id)

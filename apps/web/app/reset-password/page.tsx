@@ -3,10 +3,11 @@
 import { Suspense, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Zap, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { apiFetch } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
+import { AuthCard, authInput } from "@/components/marketing/AuthShell"
 
 function ResetPasswordForm() {
   const router = useRouter()
@@ -59,7 +60,7 @@ function ResetPasswordForm() {
           onChange={(e) => setPassword(e.target.value)}
           placeholder="New password"
           autoFocus
-          className="w-full text-sm px-3 py-2.5 rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+          className={authInput}
         />
         <input
           type="password"
@@ -67,7 +68,7 @@ function ResetPasswordForm() {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           placeholder="Confirm new password"
-          className="w-full text-sm px-3 py-2.5 rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+          className={authInput}
         />
         <Button type="submit" className="w-full" disabled={password.length < 8 || saving}>
           {saving && <Loader2 className="w-4 h-4 animate-spin" />} Update password
@@ -79,18 +80,10 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
-      <div className="w-full max-w-sm bg-background rounded-2xl border shadow-sm p-6">
-        <div className="flex items-center gap-2 mb-6">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <Zap className="w-4 h-4 text-primary-foreground" />
-          </div>
-          <span className="font-bold">Gravel</span>
-        </div>
-        <Suspense>
-          <ResetPasswordForm />
-        </Suspense>
-      </div>
-    </div>
+    <AuthCard>
+      <Suspense>
+        <ResetPasswordForm />
+      </Suspense>
+    </AuthCard>
   )
 }

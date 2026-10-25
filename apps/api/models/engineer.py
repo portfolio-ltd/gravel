@@ -6,6 +6,7 @@ from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from config import settings
 from db.base import BaseModel
 
 if TYPE_CHECKING:
@@ -33,7 +34,7 @@ class Engineer(BaseModel):
     )
     organization_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     model_provider: Mapped[str] = mapped_column(String(50), nullable=False, default="anthropic")
-    model_name: Mapped[str] = mapped_column(String(100), nullable=False, default="claude-sonnet-4-6")
+    model_name: Mapped[str] = mapped_column(String(100), nullable=False, default=settings.DEFAULT_MODEL)
 
     owner: Mapped["User"] = relationship("User", back_populates="engineers")
     runtimes: Mapped[list["EngineerRuntime"]] = relationship(

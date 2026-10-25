@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,6 +27,8 @@ class User(BaseModel):
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Fernet-encrypted JSON blob: {"openai": "sk-...", "anthropic": "sk-ant-...", "groq": "gsk_..."}
     api_keys_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # UI preferences (theme, accent, density, board layout...) — opaque to the API
+    preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     projects = relationship("Project", back_populates="owner", cascade="all, delete-orphan")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")

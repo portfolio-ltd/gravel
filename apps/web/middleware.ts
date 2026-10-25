@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
-const PROTECTED = ["/projects", "/users", "/settings", "/board", "/engineers", "/attention", "/integrations", "/workflows", "/organizations", "/prds"]
+const PROTECTED = ["/home", "/knowledge", "/projects", "/users", "/settings", "/board", "/engineers", "/attention", "/integrations", "/workflows", "/organizations", "/prds"]
 const PUBLIC_ONLY = ["/login", "/signup"]
 
 export function middleware(request: NextRequest) {
@@ -16,7 +16,7 @@ export function middleware(request: NextRequest) {
   }
 
   if (isPublicOnly && hasRefreshToken) {
-    return NextResponse.redirect(new URL("/projects", request.url))
+    return NextResponse.redirect(new URL("/home", request.url))
   }
 
   return NextResponse.next()

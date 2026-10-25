@@ -10,6 +10,10 @@ from .config import config
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("gravel-runtime")
 
+# Stage roles that change code; every other role only reads the repo and
+# reports documents back to Gravel, so it never pushes or opens a PR.
+CODE_ROLES = {"build", "custom"}
+
 PHASE_COMPLETE = {
     "grooming": "grooming_complete",
     "build": "build_complete",
@@ -68,12 +72,11 @@ def _execute_run(client: GravelClient, payload: dict) -> None:
         summary = result.get("summary", "")
         pr_url = None
 
+        writes_code = (stage.get("role", "custom") in CODE_ROLES) if stage else phase in ("build", "testing")
         if outcome_type == "completed":
             pushed = False
             outcome_type = "build_complete" if stage else PHASE_COMPLETE.get(phase, "failed")
-            do_push = project.get("repo_url") and config.executor != "llm" and (
-                stage or phase in ("build", "testing")
-            )
+            do_push = project.get("repo_url") and config.executor != "llm" and writes_code
             if do_push:
                 try:
                     pushed = workspace.commit_and_push(
@@ -87,7 +90,7 @@ def _execute_run(client: GravelClient, payload: dict) -> None:
                     result["blocking_reason"] = f"Could not push branch: {exc}"
             # PR: fixed-pipeline build always; stage runs only when they actually committed
             want_pr = outcome_type == "build_complete" and project.get("repo_url") and actual_branch \
-                and (not stage or pushed)
+                and (pushed if stage else phase == "build")
             if want_pr:
                 pr_url = github.create_or_get_pull_request(
                     project["repo_url"], actual_branch, project.get("default_branch") or "main",
@@ -100,12 +103,13 @@ def _execute_run(client: GravelClient, payload: dict) -> None:
             "outcome": outcome_type,
             "summary": summary,
             "blocking_reason": result.get("blocking_reason"),
-            "branch_name": actual_branch if (stage or phase != "grooming") else None,
+            "branch_name": actual_branch if (writes_code or (not stage and phase != "grooming")) else None,
             "pr_url": pr_url,
             "deploy_url": result.get("deploy_url"),
             "tokens_in": result.get("tokens_in"),
             "tokens_out": result.get("tokens_out"),
             "model": config.model_name if (result.get("tokens_in") or result.get("tokens_out")) else None,
+            **{key: result[key] for key in executor.STRUCTURED_FIELDS if result.get(key)},
         })
         logger.info("run %s finished: %s", run_id, outcome_type)
     except Exception as exc:

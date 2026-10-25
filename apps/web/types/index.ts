@@ -12,6 +12,7 @@ export interface User {
   role: UserRole
   is_active: boolean
   email_verified_at: string | null
+  preferences?: Record<string, unknown> | null
   created_at: string
 }
 
@@ -38,6 +39,8 @@ export interface Project {
   repo_url: string | null
   default_branch: string
   workflow_id: string | null
+  issues_repo: string | null
+  post_issue_comments: boolean
   created_at: string
   updated_at: string
   design_files: DesignFile[]
@@ -62,6 +65,10 @@ export interface Task {
   deploy_url: string | null
   workflow_stage_id: string | null
   rework_count: number
+  acceptance_criteria: AcceptanceCriterion[]
+  external_source: string | null
+  external_id: string | null
+  external_url: string | null
   tags: Tag[]
   created_at: string
   updated_at: string
@@ -288,7 +295,13 @@ export interface Organization {
   slug: string
   role: OrgRole
   member_count: number
+  appearance?: OrgAppearanceSettings | null
   created_at: string
+}
+
+export interface OrgAppearanceSettings {
+  accent?: string | null
+  brandName?: string | null
 }
 
 export interface OrgMember {
@@ -303,6 +316,7 @@ export interface OrganizationDetail {
   id: string
   name: string
   slug: string
+  appearance?: OrgAppearanceSettings | null
   created_at: string
   members: OrgMember[]
 }
@@ -363,6 +377,8 @@ export interface WorkflowStage {
   workflow_id: string
   name: string
   stage_order: number
+  role: StageRoleKey
+  block_on_open_questions: boolean
   assigned_engineer_id: string | null
   requires_human_approval: boolean
   is_ai_executable: boolean
@@ -378,6 +394,7 @@ export interface Workflow {
   owner_id: string
   name: string
   description: string | null
+  template_key: string | null
   created_at: string
   updated_at: string
   stages: WorkflowStage[]
@@ -386,6 +403,8 @@ export interface Workflow {
 export interface WorkflowStageCreate {
   name: string
   stage_order?: number
+  role?: StageRoleKey
+  block_on_open_questions?: boolean
   assigned_engineer_id?: string | null
   requires_human_approval?: boolean
   is_ai_executable?: boolean
@@ -398,4 +417,112 @@ export interface WorkflowCreate {
   name: string
   description?: string
   stages?: WorkflowStageCreate[]
+}
+
+// ── Spec-driven SDLC ─────────────────────────────────────────────────────────
+
+export type StageRoleKey = "analyze" | "refine" | "plan" | "build" | "review" | "verify" | "deploy" | "custom"
+export type DocumentKind = "analysis" | "spec" | "plan" | "scenarios" | "review" | "verification" | "notes"
+export type QuestionStatus = "open" | "answered" | "deferred" | "dismissed"
+export type KnowledgeKind = "decision" | "pattern" | "glossary" | "runbook" | "convention"
+export type KnowledgeStatus = "proposed" | "accepted" | "deprecated" | "rejected"
+
+export interface AcceptanceCriterion {
+  id: string
+  text: string
+  done: boolean
+  source: "human" | "ai"
+}
+
+export interface TaskDocument {
+  id: string
+  task_id: string
+  kind: DocumentKind
+  title: string
+  body_markdown: string
+  version: number
+  author_type: CommentAuthorType
+  author_id: string | null
+  task_run_id: string | null
+  workflow_stage_id: string | null
+  created_at: string
+}
+
+export interface OpenQuestion {
+  id: string
+  task_id: string
+  question: string
+  owner: string | null
+  status: QuestionStatus
+  blocking: boolean
+  answer: string | null
+  answered_by_id: string | null
+  answered_at: string | null
+  author_type: CommentAuthorType
+  created_at: string
+}
+
+export interface KnowledgeEntry {
+  id: string
+  organization_id: string
+  project_id: string | null
+  kind: KnowledgeKind
+  title: string
+  body_markdown: string
+  status: KnowledgeStatus
+  number: number | null
+  label: string
+  author_type: CommentAuthorType
+  created_by_id: string | null
+  source_task_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ModelOption {
+  id: string
+  label: string
+  provider: "anthropic" | "openai" | "groq"
+  note: string
+}
+
+export interface StageRole {
+  key: StageRoleKey
+  label: string
+  description: string
+  produces: DocumentKind[]
+  default_instructions: string
+}
+
+export interface WorkflowTemplateStage {
+  name: string
+  role: StageRoleKey
+  requires_human_approval: boolean
+  is_ai_executable: boolean
+  block_on_open_questions: boolean
+  rework_to: string | null
+  max_rework_attempts: number
+}
+
+export interface WorkflowTemplate {
+  key: string
+  name: string
+  description: string
+  recommended: boolean
+  stages: WorkflowTemplateStage[]
+}
+
+export interface Meta {
+  default_model: string
+  models: ModelOption[]
+  stage_roles: StageRole[]
+  workflow_templates: WorkflowTemplate[]
+}
+
+export interface IssueImportResult {
+  created: number
+  updated: number
+  skipped: number
+  total: number
+  authenticated: boolean
 }

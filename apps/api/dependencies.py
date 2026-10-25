@@ -1,5 +1,5 @@
 import hashlib
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -10,6 +10,9 @@ from db.session import get_db
 from models.engineer import EngineerRuntime
 from models.user import User, UserRole
 from services.auth import decode_access_token, get_user_by_id
+
+if TYPE_CHECKING:
+    from models.organization import Organization
 
 bearer = HTTPBearer(auto_error=False)
 

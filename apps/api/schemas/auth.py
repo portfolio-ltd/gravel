@@ -26,6 +26,8 @@ class RefreshRequest(BaseModel):
 class AccessTokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    # Refresh tokens rotate: the presented one is revoked, use this one next time
+    refresh_token: str | None = None
 
 
 class EmailTokenRequest(BaseModel):

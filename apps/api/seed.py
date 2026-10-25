@@ -5,6 +5,7 @@ Run: python seed.py (from apps/api directory)
 import asyncio
 import os
 import sys
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -43,6 +44,8 @@ async def seed():
             result = await db.execute(select(User).where(User.email == u_data["email"]))
             existing = result.scalar_one_or_none()
             if existing:
+                # Demo accounts have no real inbox — never show the verify-email banner
+                existing.email_verified_at = existing.email_verified_at or datetime.now(timezone.utc)
                 created_users[u_data["email"]] = existing
                 print(f"  user already exists: {u_data['email']}")
                 continue
@@ -51,6 +54,7 @@ async def seed():
                 email=u_data["email"],
                 hashed_password=hash_password(u_data["password"]),
                 role=u_data["role"],
+                email_verified_at=datetime.now(timezone.utc),
             )
             db.add(user)
             await db.flush()
@@ -124,48 +128,68 @@ async def seed():
         if not result.scalar_one_or_none():
             engineers = [
                 Engineer(name="Frontend Pete",   template="frontend",   skills_markdown="React, TypeScript, Tailwind CSS, Next.js App Router, Vitest", status=EngineerStatus.idle,    owner_id=admin.id, organization_id=admin_org.id),
-                Engineer(name="Backend Bobby",   template="backend",    skills_markdown="Python, FastAPI, SQLAlchemy, PostgreSQL, Alembic, pytest",   status=EngineerStatus.running, owner_id=admin.id, organization_id=admin_org.id),
+                Engineer(name="Backend Bobby",   template="backend",    skills_markdown="Python, FastAPI, SQLAlchemy, PostgreSQL, Alembic, pytest",   status=EngineerStatus.idle,    owner_id=admin.id, organization_id=admin_org.id),
                 Engineer(name="Full-stack Fiona",template="fullstack",  skills_markdown="React + FastAPI, Docker, GitHub Actions, AWS S3",            status=EngineerStatus.idle,    owner_id=admin.id, organization_id=admin_org.id),
             ]
             for eng in engineers:
                 db.add(eng)
             print("  created 3 seed engineers")
 
-        # ── Standard SDLC workflow ────────────────────────────────────────────
-        from models.workflow import Workflow, WorkflowStage
-        result = await db.execute(
-            select(Workflow).where(Workflow.owner_id == admin.id, Workflow.name == "Standard SDLC Pipeline")
-        )
+        # ── Workflows from the built-in templates ─────────────────────────────
+        from services.sdlc import merge_ai_criteria, workflow_for_template
+        spec_wf = await workflow_for_template(db, "spec-driven", admin.id, admin_org.id)
+        await workflow_for_template(db, "classic", admin.id, admin_org.id)
+        print(f"  workflows ready: {spec_wf.name}, classic")
+
+        # ── Project 3: a spec-driven project ready to run ──────────────────────
+        result = await db.execute(select(Project).where(Project.name == "Invoice Exports"))
         if not result.scalar_one_or_none():
-            wf = Workflow(
-                owner_id=admin.id,
-                organization_id=admin_org.id,
-                name="Standard SDLC Pipeline",
-                description="Plan → Approve → Build → Test → Deploy with a rework loop from QA back to Build.",
-            )
-            db.add(wf)
+            p3 = Project(name="Invoice Exports", status=ProjectStatus.setup, owner_id=admin.id,
+                         organization_id=admin_org.id, workflow_id=spec_wf.id)
+            db.add(p3)
             await db.flush()
-            stage_defs = [
-                ("AI Grooming",   0, True,  False, "Assess whether the task is implementation-ready. List gaps, risks, and concrete acceptance criteria. Do not implement anything."),
-                ("Approval Gate", 1, False, True,  None),
-                ("Build",         2, True,  True,  "Implement the task end-to-end on the task branch. Add tests where the codebase has them and run available verification before finishing."),
-                ("QA Testing",    3, True,  False, "Verify the implementation against the acceptance criteria. Run the strongest verification available and report concrete evidence."),
-                ("Deploy",        4, True,  False, "Prepare and execute the deployment using the project's deploy configuration. Capture evidence such as URLs and logs."),
+            specs = [
+                ("Export invoices as CSV", "Finance needs to download a month of invoices for reconciliation.",
+                 ["Given a month with invoices, when finance exports it, then a CSV with one row per invoice downloads",
+                  "Given a month with no invoices, when finance exports it, then they see an empty-state message"]),
+                ("Email a monthly invoice digest", "Account owners get a summary of last month's invoices on the 1st.", []),
+                ("Flag overdue invoices on the dashboard", "Overdue invoices should stand out so collections can act on them.",
+                 ["Given an invoice past its due date, when the dashboard loads, then it is marked overdue"]),
             ]
-            stages = []
-            for name, order, ai, approval, instructions in stage_defs:
-                s = WorkflowStage(
-                    workflow_id=wf.id, name=name, stage_order=order,
-                    is_ai_executable=ai, requires_human_approval=approval,
-                    stage_instructions=instructions,
-                    max_rework_attempts=3,
-                )
-                db.add(s)
-                stages.append(s)
-            await db.flush()
-            # QA failures loop back to Build
-            stages[3].rework_target_stage_id = stages[2].id
-            print("  created workflow: Standard SDLC Pipeline (5 stages)")
+            for i, (title, description, criteria) in enumerate(specs):
+                t = Task(project_id=p3.id, title=title, description=description, priority=TaskPriority.high if i == 0 else TaskPriority.medium,
+                         type=TaskType.feature, position=i)
+                if criteria:
+                    t.acceptance_criteria = [dict(c, source="human") for c in merge_ai_criteria(None, criteria)]
+                db.add(t)
+            print("  created project: Invoice Exports (spec-driven workflow — press Run)")
+
+        # ── Knowledge base ────────────────────────────────────────────────────
+        from models.sdlc import KnowledgeEntry, KnowledgeKind, KnowledgeStatus
+        from models.task_run import CommentAuthorType
+        result = await db.execute(select(KnowledgeEntry).where(KnowledgeEntry.organization_id == admin_org.id))
+        if not result.scalars().first():
+            entries = [
+                (KnowledgeKind.decision, KnowledgeStatus.accepted, 1, "PostgreSQL is the system of record",
+                 "**Context** — we need relational integrity for billing data.\n\n**Decision** — all durable state lives in "
+                 "PostgreSQL; caches may be rebuilt at any time.\n\n**Consequences** — no feature may treat Redis as a source of truth."),
+                (KnowledgeKind.pattern, KnowledgeStatus.accepted, None, "Stream large exports",
+                 "Generate CSV/JSON exports as a streamed response instead of building the file in memory. "
+                 "Set `Content-Disposition` and keep a stable column order."),
+                (KnowledgeKind.glossary, KnowledgeStatus.accepted, None, "Invoice",
+                 "A bill issued to a customer for one billing period. Has a due date; becomes **overdue** after it."),
+                (KnowledgeKind.convention, KnowledgeStatus.accepted, None, "API errors",
+                 "Errors return `{\"detail\": str}` with a meaningful HTTP status; never 200 with an error body."),
+                (KnowledgeKind.runbook, KnowledgeStatus.proposed, None, "Re-sending a failed invoice digest",
+                 "1. Find the failed job in the worker logs.\n2. Re-queue it with the original month.\n3. Confirm delivery in the mail provider."),
+            ]
+            for kind, status, number, title, body in entries:
+                db.add(KnowledgeEntry(
+                    organization_id=admin_org.id, kind=kind, status=status, number=number, title=title,
+                    body_markdown=body, created_by_id=admin.id,
+                    author_type=CommentAuthorType.ai if status == KnowledgeStatus.proposed else CommentAuthorType.human,
+                ))
+            print("  created knowledge base (4 accepted, 1 proposed)")
 
         await db.commit()
         print("\nSeed complete! Demo credentials:")

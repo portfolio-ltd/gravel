@@ -35,6 +35,12 @@ async def test_refresh_rotation(client: AsyncClient):
     assert resp.status_code == 200
     assert resp.json()["access_token"]
 
+    # Rotation: the presented token is spent; the returned one keeps the session alive
+    rotated = resp.json()["refresh_token"]
+    assert rotated and rotated != refresh
+    assert (await client.post("/api/auth/refresh", json={"refresh_token": refresh})).status_code == 401
+    assert (await client.post("/api/auth/refresh", json={"refresh_token": rotated})).status_code == 200
+
 
 async def test_me_requires_auth(client: AsyncClient):
     resp = await client.get("/api/auth/me")

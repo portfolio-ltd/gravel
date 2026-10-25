@@ -1,17 +1,37 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { GitBranch, Plus, Trash2, Pencil } from "lucide-react"
-import { useWorkflows, useDeleteWorkflow } from "@/hooks/useWorkflows"
+import { GitBranch, Plus, Trash2, Pencil, LayoutTemplate } from "lucide-react"
+import { useWorkflows, useDeleteWorkflow, useCreateWorkflowFromTemplate } from "@/hooks/useWorkflows"
+import { useMeta } from "@/hooks/useSdlc"
 import { Button } from "@/components/ui/button"
+import { EmptyState, Page, PageHeader } from "@/components/ui/page"
+import { Pipeline, PipelineLegend, TemplateCard, stagesFromWorkflow } from "@/components/workflow/Pipeline"
 import { toast } from "sonner"
 import { formatRelativeTime } from "@/lib/utils"
 
 export default function WorkflowsPage() {
   const router = useRouter()
   const { data: workflows, isLoading } = useWorkflows()
+  const { data: meta } = useMeta()
   const deleteWorkflow = useDeleteWorkflow()
+  const fromTemplate = useCreateWorkflowFromTemplate()
+  const [pendingKey, setPendingKey] = useState<string | null>(null)
+
+  async function handleUseTemplate(key: string) {
+    setPendingKey(key)
+    try {
+      const wf = await fromTemplate.mutateAsync({ template_key: key })
+      toast.success(`Created “${wf.name}”`)
+      router.push(`/workflows/${wf.id}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create workflow")
+    } finally {
+      setPendingKey(null)
+    }
+  }
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Delete workflow "${name}"?`)) return
@@ -24,82 +44,83 @@ export default function WorkflowsPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <GitBranch className="w-5 h-5 text-primary" />
-            <h1 className="text-xl font-bold">Workflows</h1>
-          </div>
-          <Button size="sm" onClick={() => router.push("/workflows/new")}>
-            <Plus className="w-3.5 h-3.5" /> New workflow
+    <Page>
+      <PageHeader
+        icon={<GitBranch className="h-4 w-4" />}
+        title="Workflows"
+        description="The stages a task moves through, who runs them, and where humans sign off."
+        actions={
+          <Button size="sm" variant="outline" onClick={() => router.push("/workflows/new")}>
+            <Plus className="h-3.5 w-3.5" /> Blank workflow
           </Button>
+        }
+      />
+
+      <section className="mb-10">
+        <div className="mb-3 flex items-center gap-2">
+          <LayoutTemplate className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">Start from a template</h2>
         </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {(meta?.workflow_templates ?? []).map((tpl) => (
+            <TemplateCard
+              key={tpl.key}
+              template={tpl}
+              pending={pendingKey === tpl.key}
+              onUse={() => handleUseTemplate(tpl.key)}
+            />
+          ))}
+          {!meta && [0, 1, 2].map((i) => <div key={i} className="surface h-40 animate-pulse bg-muted/40" />)}
+        </div>
+        <div className="mt-3"><PipelineLegend /></div>
+      </section>
 
-        <p className="text-sm text-muted-foreground mb-6">
-          Custom pipelines for your projects: ordered stages with assigned engineers,
-          approval gates, and rework loops. Projects without a workflow use the default
-          grooming → build → testing → deployment flow.
-        </p>
-
+      <section>
+        <h2 className="mb-3 text-sm font-semibold">Your workflows</h2>
         {isLoading ? (
-          <div className="text-sm text-muted-foreground">Loading workflows…</div>
+          <div className="space-y-3">{[0, 1].map((i) => <div key={i} className="surface h-20 animate-pulse bg-muted/40" />)}</div>
         ) : workflows && workflows.length > 0 ? (
           <div className="space-y-3">
             {workflows.map((wf) => (
-              <div key={wf.id} className="bg-background rounded-xl border p-4 flex items-center gap-4 hover:shadow-sm transition-all group">
-                <div className="flex-1 min-w-0">
-                  <Link href={`/workflows/${wf.id}`} className="font-semibold text-sm hover:underline">
-                    {wf.name}
-                  </Link>
-                  {wf.description && (
-                    <p className="text-xs text-muted-foreground truncate">{wf.description}</p>
-                  )}
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    {wf.stages.map((s, i) => (
-                      <span key={s.id} className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                        {i + 1}. {s.name}
-                      </span>
-                    ))}
+              <div key={wf.id} className="surface group flex items-start gap-4 p-4 transition-shadow hover:shadow-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link href={`/workflows/${wf.id}`} className="text-sm font-semibold hover:underline">{wf.name}</Link>
+                    {wf.template_key && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">from template</span>
+                    )}
                   </div>
+                  {wf.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{wf.description}</p>}
+                  <Pipeline stages={stagesFromWorkflow(wf.stages)} size="sm" className="mt-2.5" />
                 </div>
-                <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">
-                  {formatRelativeTime(wf.created_at)}
-                </span>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{formatRelativeTime(wf.created_at)}</span>
+                <div className="flex shrink-0 gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
                   <button
                     onClick={() => router.push(`/workflows/${wf.id}`)}
-                    className="p-1.5 rounded-lg hover:bg-muted"
-                    title="Edit"
+                    className="rounded-lg p-1.5 hover:bg-muted"
+                    aria-label={`Edit ${wf.name}`}
                   >
-                    <Pencil className="w-3.5 h-3.5" />
+                    <Pencil className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={() => handleDelete(wf.id, wf.name)}
-                    className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                    title="Delete"
+                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    aria-label={`Delete ${wf.name}`}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-              <GitBranch className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <h2 className="font-semibold mb-1">No workflows yet</h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              Design a custom stage pipeline and attach it to your projects.
-            </p>
-            <Button size="sm" onClick={() => router.push("/workflows/new")}>
-              <Plus className="w-3.5 h-3.5" /> Create workflow
-            </Button>
-          </div>
+          <EmptyState
+            icon={<GitBranch className="h-5 w-5" />}
+            title="No workflows yet"
+            description="Pick a template above, or design your own pipeline. Projects without a workflow use the default groom → build → test → deploy flow."
+          />
         )}
-      </div>
-    </div>
+      </section>
+    </Page>
   )
 }

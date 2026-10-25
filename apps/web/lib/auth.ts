@@ -2,7 +2,6 @@
 
 import Cookies from "js-cookie"
 
-const ACCESS_KEY = "gravel_access"
 const REFRESH_KEY = "gravel_refresh"
 
 // Access token: in-memory only (never persisted, cleared on page unload)

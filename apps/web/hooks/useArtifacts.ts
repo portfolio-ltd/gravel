@@ -22,15 +22,21 @@ export function useUploadArtifact() {
       fd.append("file", file)
       return apiUpload<EvidenceArtifact>("/api/artifacts/upload", fd)
     },
-    onSuccess: (_, { runId }) => qc.invalidateQueries({ queryKey: ["artifacts", runId] }),
+    onSuccess: (_, { runId }) => {
+      qc.invalidateQueries({ queryKey: ["artifacts", runId] })
+      qc.invalidateQueries({ queryKey: ["task-runs"] })  // runs embed their artifacts
+    },
   })
 }
 
 export function useDeleteArtifact() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ artifactId, runId }: { artifactId: string; runId: string }) =>
+    mutationFn: ({ artifactId }: { artifactId: string; runId: string }) =>
       apiFetch(`/api/artifacts/${artifactId}`, { method: "DELETE" }),
-    onSuccess: (_, { runId }) => qc.invalidateQueries({ queryKey: ["artifacts", runId] }),
+    onSuccess: (_, { runId }) => {
+      qc.invalidateQueries({ queryKey: ["artifacts", runId] })
+      qc.invalidateQueries({ queryKey: ["task-runs"] })
+    },
   })
 }

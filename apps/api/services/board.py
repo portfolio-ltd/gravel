@@ -3,10 +3,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.engineer import Engineer, EngineerStatus
 from models.project import Project
+from models.sdlc import OpenQuestion, QuestionStatus
 from models.task import Task, TaskStatus
 from models.task_run import TaskRun
-from schemas.board import AttentionTaskOut, BoardColumn, BoardOut, WorkspaceMetrics
-from schemas.task import TaskOut
+from models.workflow import WorkflowStage
+from schemas.board import AttentionTaskOut, BoardColumn, BoardOut, BoardTaskOut, WorkspaceMetrics
 
 COLUMN_ORDER = [TaskStatus.pending, TaskStatus.in_progress, TaskStatus.qa, TaskStatus.done]
 
@@ -28,6 +29,7 @@ async def get_board(db: AsyncSession, organization_id: str, project_id: str | No
         q = q.where(Task.project_id == project_id)
     result = await db.execute(q)
     all_tasks = list(result.scalars().all())
+    enrich = await _enricher(db, all_tasks)
 
     # A single project with a custom workflow gets stage-named lanes
     if project_id:
@@ -36,7 +38,7 @@ async def get_board(db: AsyncSession, organization_id: str, project_id: str | No
             from services.orchestrator import ordered_stages
             stages = await ordered_stages(db, project.workflow_id)
             if stages:
-                return _stage_board(stages, all_tasks)
+                return _stage_board(stages, all_tasks, enrich)
 
     columns = []
     for status in COLUMN_ORDER:
@@ -46,12 +48,38 @@ async def get_board(db: AsyncSession, organization_id: str, project_id: str | No
             key=f"status:{status.value}",
             label=STATUS_LABELS[status],
             status=status.value,
-            tasks=[TaskOut.model_validate(t) for t in tasks],
+            tasks=[enrich(t) for t in tasks],
         ))
     return BoardOut(columns=columns)
 
 
-def _stage_board(stages, all_tasks: list[Task]) -> BoardOut:
+async def _enricher(db: AsyncSession, tasks: list[Task]):
+    """Per-task extras for cards: open blocking questions and current stage name."""
+    ids = [t.id for t in tasks]
+    counts: dict[str, int] = {}
+    names: dict[str, str] = {}
+    if ids:
+        rows = await db.execute(
+            select(OpenQuestion.task_id, func.count()).where(
+                OpenQuestion.task_id.in_(ids), OpenQuestion.status == QuestionStatus.open,
+                OpenQuestion.blocking.is_(True),
+            ).group_by(OpenQuestion.task_id)
+        )
+        counts = {tid: n for tid, n in rows.all()}
+        stage_ids = {t.workflow_stage_id for t in tasks if t.workflow_stage_id}
+        if stage_ids:
+            rows = await db.execute(select(WorkflowStage.id, WorkflowStage.name).where(WorkflowStage.id.in_(stage_ids)))
+            names = {sid: name for sid, name in rows.all()}
+
+    def enrich(t: Task) -> BoardTaskOut:
+        out = BoardTaskOut.model_validate(t)
+        out.open_question_count = counts.get(t.id, 0)
+        out.stage_name = names.get(t.workflow_stage_id) if t.workflow_stage_id else None
+        return out
+    return enrich
+
+
+def _stage_board(stages, all_tasks: list[Task], enrich) -> BoardOut:
     done = [t for t in all_tasks if t.status == TaskStatus.done]
     remaining = [t for t in all_tasks if t.status != TaskStatus.done]
 
@@ -67,14 +95,14 @@ def _stage_board(stages, all_tasks: list[Task]) -> BoardOut:
             label=stage.name,
             status=None,
             stage_id=stage.id,
-            tasks=[TaskOut.model_validate(t) for t in tasks],
+            tasks=[enrich(t) for t in tasks],
         ))
     done.sort(key=lambda t: t.position)
     columns.append(BoardColumn(
         key="status:done",
         label="Done",
         status=TaskStatus.done.value,
-        tasks=[TaskOut.model_validate(t) for t in done],
+        tasks=[enrich(t) for t in done],
     ))
     return BoardOut(columns=columns)
 

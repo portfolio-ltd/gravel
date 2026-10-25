@@ -1,6 +1,6 @@
 [project]
 name = "gravel-runtime"
-version = "0.1.0"
+version = "0.2.0"
 description = "Gravel engineer runtime: polls the Gravel API for task runs and executes them"
 requires-python = ">=3.11"
 dependencies = [
@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-llm = ["anthropic>=0.40", "openai>=1.50"]
+llm = ["anthropic>=2.3,<3", "openai>=1.50"]
 test = ["pytest>=8"]
 
 [build-system]

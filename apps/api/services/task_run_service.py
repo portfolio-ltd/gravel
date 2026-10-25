@@ -49,7 +49,19 @@ async def create_run(db: AsyncSession, task_id: str, phase: TaskRunPhase, engine
     return run
 
 
-async def reject_run(db: AsyncSession, run_id: str, note: str | None = None) -> TaskRun | None:
+async def reject_run(db: AsyncSession, run_id: str, note: str | None = None,
+                     rework: bool | None = None, author_id: str | None = None) -> TaskRun | None:
+    """Reject a gated run.
+
+    rework=True ("request changes") records the note as a human comment and
+    sends the task back for another pass: a workflow stage re-enters its
+    rework target (or itself), a phase re-runs (testing goes back to build).
+    rework=False stops the task at pending. None means: rework for workflow
+    stages, stop for the legacy phase pipeline.
+    """
+    from models.workflow import WorkflowStage
+    from services import orchestrator
+
     run = await get_run(db, run_id)
     if not run:
         return None
@@ -57,15 +69,35 @@ async def reject_run(db: AsyncSession, run_id: str, note: str | None = None) -> 
     run.approval_required = False
     run.completed_at = datetime.now(timezone.utc)
 
-    # Reset task to pending
-    result = await db.execute(select(Task).where(Task.id == run.task_id))
-    task = result.scalar_one_or_none()
-    if task:
-        task.status = TaskStatus.pending
-
+    task = (await db.execute(select(Task).where(Task.id == run.task_id))).scalar_one_or_none()
     if note:
-        log = TaskRunLog(id=new_uuid(), task_run_id=run_id, message=f"Rejected: {note}", level="warn")
-        db.add(log)
+        db.add(TaskRunLog(id=new_uuid(), task_run_id=run_id, message=f"Rejected: {note}", level="warn"))
+    if rework is None:
+        rework = run.workflow_stage_id is not None
+    if not task:
+        await db.flush()
+        return run
+
+    if not rework:
+        task.status = TaskStatus.pending
+        await db.flush()
+        return run
+
+    db.add(TaskComment(
+        id=new_uuid(), task_id=task.id, task_run_id=run.id, author_id=author_id,
+        author_type=CommentAuthorType.human, action_flag="changes_requested",
+        body=f"Changes requested: {note}" if note else "Changes requested.",
+    ))
+    await db.flush()
+    stage = await db.get(WorkflowStage, run.workflow_stage_id) if run.workflow_stage_id else None
+    if stage:
+        stages = await orchestrator.ordered_stages(db, stage.workflow_id)
+        target = next((s for s in stages if s.id == stage.rework_target_stage_id), None) or stage
+        await orchestrator.enter_stage(db, task, target, stages)
+    else:
+        phase = TaskRunPhase.build if run.phase == TaskRunPhase.testing else run.phase
+        task.status = orchestrator.PHASE_TASK_STATUS[phase]
+        await orchestrator.create_phase_run(db, task, phase)
     await db.flush()
     return run
 
@@ -83,23 +115,6 @@ async def submit_log(db: AsyncSession, run_id: str, message: str, level: str = "
     db.add(log)
     await db.flush()
     return log
-
-
-async def report_outcome(db: AsyncSession, run_id: str, outcome: TaskRunOutcome, blocking_reason: str | None = None) -> TaskRun | None:
-    run = await get_run(db, run_id)
-    if not run:
-        return None
-    run.outcome = outcome
-    run.blocking_reason = blocking_reason
-    run.completed_at = datetime.now(timezone.utc)
-
-    if outcome in (TaskRunOutcome.build_complete, TaskRunOutcome.deployment_complete):
-        result = await db.execute(select(Task).where(Task.id == run.task_id))
-        task = result.scalar_one_or_none()
-        if task:
-            task.status = TaskStatus.done
-    await db.flush()
-    return run
 
 
 # Comments
@@ -127,8 +142,10 @@ async def add_comment(db: AsyncSession, task_id: str, body: str,
     return comment
 
 
-async def delete_comment(db: AsyncSession, comment_id: str) -> bool:
-    result = await db.execute(select(TaskComment).where(TaskComment.id == comment_id))
+async def delete_comment(db: AsyncSession, task_id: str, comment_id: str) -> bool:
+    result = await db.execute(
+        select(TaskComment).where(TaskComment.id == comment_id, TaskComment.task_id == task_id)
+    )
     comment = result.scalar_one_or_none()
     if not comment:
         return False
@@ -159,11 +176,16 @@ async def create_artifact(db: AsyncSession, run_id: str, artifact_type: Artifact
     return artifact
 
 
+async def get_artifact(db: AsyncSession, artifact_id: str) -> EvidenceArtifact | None:
+    return (await db.execute(select(EvidenceArtifact).where(EvidenceArtifact.id == artifact_id))).scalar_one_or_none()
+
+
 async def delete_artifact(db: AsyncSession, artifact_id: str) -> bool:
-    result = await db.execute(select(EvidenceArtifact).where(EvidenceArtifact.id == artifact_id))
-    art = result.scalar_one_or_none()
+    art = await get_artifact(db, artifact_id)
     if not art:
         return False
+    from services.storage import delete_stored_file
+    delete_stored_file(art.file_path)
     await db.delete(art)
     await db.flush()
     return True

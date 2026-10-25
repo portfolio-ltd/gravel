@@ -19,11 +19,14 @@ Return ONLY a valid JSON array (no markdown fences, no extra text) in this forma
     "title": "Short action-oriented title (max 80 chars)",
     "description": "What needs to be built/done (1-3 sentences)",
     "priority": "high|medium|low",
-    "type": "feature|bug|design|infra"
+    "type": "feature|bug|design|infra",
+    "acceptance_criteria": ["Testable Given/When/Then-style statement", "..."]
   }}
 ]
 
-Aim for 5–15 tasks. Prioritize by impact.
+Aim for 5–15 tasks. Prioritize by impact. Give each task 2–4 acceptance
+criteria taken from the PRD; leave the list empty rather than inventing
+criteria the PRD doesn't support.
 
 PRD content:
 ---
@@ -61,7 +64,7 @@ async def parse_prd_text(
 
     prompt = PARSE_PROMPT.format(prd_text=prd_text[:8000])
     try:
-        result = await call_llm(provider, model, keys, prompt, max_tokens=2000)
+        result = await call_llm(provider, model, keys, prompt, max_tokens=8000)
         tasks = _extract_json(result.text)
         return (tasks if tasks else _fallback_tasks()), result
     except Exception as e:

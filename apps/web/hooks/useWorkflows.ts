@@ -85,3 +85,12 @@ export function useReorderStages() {
     onSuccess: invalidate,
   })
 }
+
+export function useCreateWorkflowFromTemplate() {
+  const invalidate = useInvalidateWorkflows()
+  return useMutation({
+    mutationFn: (data: { template_key: string; name?: string }) =>
+      apiFetch<Workflow>("/api/workflows/from-template", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: invalidate,
+  })
+}

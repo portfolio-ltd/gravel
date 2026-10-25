@@ -18,9 +18,9 @@ export default function OrgSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border bg-background text-xs font-medium hover:bg-muted transition-colors max-w-[180px]">
+        <button className="flex w-full items-center gap-2 rounded-lg border bg-background/60 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent">
           <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-          <span className="truncate">{activeOrg.name}</span>
+          <span className="flex-1 truncate text-left">{activeOrg.name}</span>
           <ChevronsUpDown className="w-3 h-3 text-muted-foreground shrink-0" />
         </button>
       </DropdownMenuTrigger>

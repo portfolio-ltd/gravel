@@ -46,9 +46,12 @@ async def delete_file(
     project_id: str,
     filename: str,
     current_user: CurrentUser,
+    org: CurrentOrg,
     db: DB,
 ):
     from sqlalchemy import delete as sql_delete
+    if not await get_project(db, project_id, organization_id=org.id):
+        raise HTTPException(status_code=404, detail="Project not found")
     from sqlalchemy import select
     result = await db.execute(
         select(ProjectDesignFile).where(

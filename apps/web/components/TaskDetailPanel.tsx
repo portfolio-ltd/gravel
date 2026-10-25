@@ -1,296 +1,233 @@
 "use client"
 
-import { useState } from "react"
-import { X, CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronRight, Upload, Send, Trash2 } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
-import type { Task, TaskRun, TaskComment } from "@/types"
-import { useTaskRuns, useApproveRun, useRejectRun, useAddComment, useDeleteComment, useTaskComments } from "@/hooks/useTaskRuns"
-import { useArtifacts, useUploadArtifact } from "@/hooks/useArtifacts"
-import { useTaskTokenSummary, formatTokens } from "@/hooks/useTokens"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { ExternalLink, GitBranch, GitPullRequest, Globe, Hand, X } from "lucide-react"
+import type { Task } from "@/types"
+import { useProject } from "@/hooks/useProjects"
+import { useWorkflow } from "@/hooks/useWorkflows"
+import { useTaskRuns } from "@/hooks/useTaskRuns"
+import { useTaskDocuments, useTaskQuestions } from "@/hooks/useSdlc"
 import { useSetTaskTags } from "@/hooks/useTags"
 import TagPicker from "@/components/TagPicker"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import Markdown from "@/components/Markdown"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import StageStepper from "@/components/sdlc/StageStepper"
+import GateActions from "@/components/sdlc/GateActions"
+import CriteriaEditor from "@/components/sdlc/CriteriaEditor"
+import QuestionsPanel from "@/components/sdlc/QuestionsPanel"
+import DocumentsPanel from "@/components/sdlc/DocumentsPanel"
+import ActivityPanel from "@/components/sdlc/ActivityPanel"
+import DiscussionPanel from "@/components/sdlc/DiscussionPanel"
+import { isGated, issueRef, OUTCOME_META, PRIORITY_TONE, STATUS_LABELS } from "@/components/sdlc/meta"
 import { cn } from "@/lib/utils"
-
-const PRIORITY_COLORS: Record<string, string> = {
-  high: "bg-red-100 text-red-700",
-  medium: "bg-amber-100 text-amber-700",
-  low: "bg-emerald-100 text-emerald-700",
-}
-
-const OUTCOME_LABELS: Record<string, { label: string; color: string }> = {
-  build_complete: { label: "Build complete", color: "text-emerald-600" },
-  testing_complete: { label: "Testing complete", color: "text-emerald-600" },
-  deployment_complete: { label: "Deployed", color: "text-emerald-600" },
-  grooming_complete: { label: "Grooming done", color: "text-blue-600" },
-  needs_human_input: { label: "Needs review", color: "text-amber-600" },
-  blocked: { label: "Blocked", color: "text-red-600" },
-  failed: { label: "Failed", color: "text-red-600" },
-}
-
-function RunRow({ run }: { run: TaskRun }) {
-  const [open, setOpen] = useState(false)
-  const { data: artifacts } = useArtifacts(open ? run.id : "")
-  const outcome = run.outcome ? OUTCOME_LABELS[run.outcome] : null
-
-  return (
-    <div className="border rounded-lg overflow-hidden">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors"
-      >
-        {open ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
-        <span className="font-medium capitalize">
-          {run.workflow_stage_id ? "Stage run" : `${run.phase} phase`}
-        </span>
-        {run.attempt_number > 1 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
-            attempt {run.attempt_number}
-          </span>
-        )}
-        {outcome && <span className={cn("text-xs ml-auto", outcome.color)}>{outcome.label}</span>}
-        <span className="text-xs text-muted-foreground ml-2">
-          {formatDistanceToNow(new Date(run.started_at), { addSuffix: true })}
-        </span>
-      </button>
-
-      {open && (
-        <div className="border-t bg-muted/20 p-3 space-y-2">
-          {run.blocking_reason && (
-            <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1.5">{run.blocking_reason}</p>
-          )}
-          {(run.logs ?? []).map((log) => (
-            <p key={log.id} className={cn("text-xs font-mono", log.level === "error" ? "text-red-600" : "text-muted-foreground")}>
-              [{log.level}] {log.message}
-            </p>
-          ))}
-          {(artifacts ?? []).length > 0 && (
-            <div className="flex gap-2 flex-wrap pt-1">
-              {artifacts!.map((a) => (
-                <a
-                  key={a.id}
-                  href={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/uploads/${a.file_path}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs px-2 py-1 rounded bg-background border hover:bg-muted transition-colors"
-                >
-                  {a.artifact_type}: {a.filename}
-                </a>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function CommentItem({ comment, taskId }: { comment: TaskComment; taskId: string }) {
-  const del = useDeleteComment()
-  return (
-    <div className={cn("flex gap-2 group", comment.author_type === "ai" ? "flex-row-reverse" : "")}>
-      <div className={cn(
-        "w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5",
-        comment.author_type === "ai" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
-      )}>
-        {comment.author_type === "ai" ? "AI" : "HU"}
-      </div>
-      <div className={cn("flex-1 max-w-[85%]", comment.author_type === "ai" ? "items-end" : "")}>
-        <div className={cn(
-          "rounded-xl px-3 py-2 text-sm",
-          comment.author_type === "ai" ? "bg-purple-50 text-purple-900" : "bg-blue-50 text-blue-900"
-        )}>
-          {comment.body}
-        </div>
-        <p className="text-[10px] text-muted-foreground mt-0.5 px-1">
-          {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
-        </p>
-      </div>
-      <button
-        onClick={() => del.mutate({ taskId, commentId: comment.id })}
-        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:text-destructive transition-all self-start mt-1"
-      >
-        <Trash2 className="w-3 h-3" />
-      </button>
-    </div>
-  )
-}
 
 interface Props {
   task: Task
   onClose: () => void
 }
 
-export default function TaskDetailPanel({ task, onClose }: Props) {
+function Count({ n, tone = "muted" }: { n: number; tone?: "muted" | "warning" }) {
+  if (!n) return null
+  return (
+    <span className={cn("ml-1.5 min-w-[18px] rounded-full px-1.5 text-[10px] font-semibold leading-[18px]",
+      tone === "warning" ? "bg-warning/15 text-warning" : "bg-muted-foreground/15 text-muted-foreground")}>
+      {n}
+    </span>
+  )
+}
+
+const TAB_TRIGGER = "rounded-none border-b-2 border-transparent bg-transparent px-3 pb-2.5 pt-2 text-xs shadow-none " +
+  "data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+export default function TaskDetailPanel({ task: initialTask, onClose }: Props) {
+  // The project detail carries the freshest copy of the task (sockets invalidate it)
+  const { data: project } = useProject(initialTask.project_id)
+  const task = useMemo(
+    () => project?.tasks.find((t) => t.id === initialTask.id) ?? initialTask,
+    [project, initialTask],
+  )
+  const { data: workflow } = useWorkflow(project?.workflow_id)
   const { data: runs } = useTaskRuns(task.id)
-  const { data: comments } = useTaskComments(task.id)
-  const { data: tokenSummary } = useTaskTokenSummary(task.id)
+  const { data: questions } = useTaskQuestions(task.id)
+  const { data: documents } = useTaskDocuments(task.id)
   const setTaskTags = useSetTaskTags()
-  const approve = useApproveRun()
-  const reject = useRejectRun()
-  const addComment = useAddComment()
-  const uploadArtifact = useUploadArtifact()
-  const [commentBody, setCommentBody] = useState("")
+  const [tab, setTab] = useState("overview")
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLElement>(null)
+
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  useEffect(() => {
+    // Modal behaviour: focus moves in, Tab cycles inside the panel, and focus
+    // returns to whatever opened it (usually the board card) on close.
+    const opener = document.activeElement as HTMLElement | null
+    closeRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      const panel = panelRef.current
+      const active = document.activeElement
+      // A nested dialog or menu (portalled outside the panel) handles its own keys
+      if (panel && active?.closest('[role="dialog"], [role="menu"]') && !panel.contains(active)) return
+      if (e.key === "Escape") { onCloseRef.current(); return }
+      if (e.key !== "Tab" || !panel) return
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE))
+        .filter((el) => el.offsetParent !== null)
+      if (!focusable.length) return
+      const first = focusable[0], last = focusable[focusable.length - 1]
+      if (e.shiftKey && (active === first || !panel.contains(active))) {
+        e.preventDefault(); last.focus()
+      } else if (!e.shiftKey && (active === last || !panel.contains(active))) {
+        e.preventDefault(); first.focus()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      opener?.focus?.()
+    }
+  }, [])
 
   const latestRun = runs?.[0]
-  const needsAction = !!latestRun && latestRun.approval_required && !latestRun.approved_at
-  const isGate = needsAction && latestRun.outcome !== "needs_human_input" && latestRun.outcome !== "blocked"
-
-  function handleSendComment() {
-    if (!commentBody.trim()) return
-    addComment.mutate({ taskId: task.id, body: commentBody })
-    setCommentBody("")
-  }
+  const gated = isGated(latestRun) ? latestRun : null
+  const stages = workflow?.stages ?? []
+  const gateStage = gated?.workflow_stage_id ? stages.find((s) => s.id === gated.workflow_stage_id) : null
+  const openQuestions = (questions ?? []).filter((q) => q.status === "open").length
+  const blockingOpen = (questions ?? []).filter((q) => q.status === "open" && q.blocking).length
+  const issue = issueRef(task)
 
   return (
-    <div className="fixed inset-y-0 right-0 w-full sm:w-[480px] bg-background border-l shadow-xl z-50 flex flex-col">
-      {/* Header */}
-      <div className="px-4 py-3 border-b flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <h2 className="font-semibold text-sm leading-tight">{task.title}</h2>
-          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-            <Badge variant="outline" className="text-[10px] capitalize">{task.status.replace("_", " ")}</Badge>
-            <Badge className={cn("text-[10px]", PRIORITY_COLORS[task.priority])} variant="outline">{task.priority}</Badge>
-            <Badge variant="outline" className="text-[10px] capitalize">{task.type}</Badge>
-            {task.branch_name && <Badge variant="outline" className="text-[10px] font-mono">{task.branch_name}</Badge>}
+    <div className="fixed inset-0 z-50 flex justify-end" role="presentation">
+      <div className="absolute inset-0 animate-fade-in bg-black/30 backdrop-blur-[2px]" onClick={onClose} aria-hidden />
+      <aside
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-panel-title"
+        className="relative flex h-full w-full animate-slide-in-right flex-col border-l bg-background shadow-2xl sm:w-[min(760px,92vw)]"
+      >
+        {/* Header */}
+        <header className="border-b px-5 pb-3 pt-4">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              {project && <p className="mb-1 truncate text-[11px] font-medium text-muted-foreground">{project.name}</p>}
+              <h2 id="task-panel-title" className="text-base font-semibold leading-snug">{task.title}</h2>
+            </div>
+            <button ref={closeRef} onClick={onClose} aria-label="Close task"
+              className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span className="rounded-full border px-2 py-0.5 font-medium">{STATUS_LABELS[task.status] ?? task.status}</span>
+            <span className={cn("rounded-full px-2 py-0.5 font-medium capitalize", PRIORITY_TONE[task.priority])}>{task.priority}</span>
+            <span className="rounded-full bg-muted px-2 py-0.5 font-medium capitalize text-muted-foreground">{task.type}</span>
+            {task.rework_count > 0 && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">rework ×{task.rework_count}</span>
+            )}
+            {task.branch_name && (
+              <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px]">
+                <GitBranch className="h-3 w-3" /> {task.branch_name}
+              </span>
+            )}
             {task.pr_url && (
-              <a href={task.pr_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 underline">
-                Pull request ↗
+              <a href={task.pr_url} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-full bg-info/10 px-2 py-0.5 font-medium text-info hover:underline">
+                <GitPullRequest className="h-3 w-3" /> Pull request
               </a>
             )}
             {task.deploy_url && (
-              <a href={task.deploy_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-emerald-600 underline">
-                Live ↗
+              <a href={task.deploy_url} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 font-medium text-success hover:underline">
+                <Globe className="h-3 w-3" /> Live
+              </a>
+            )}
+            {issue && task.external_url && (
+              <a href={task.external_url} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium hover:bg-muted">
+                <ExternalLink className="h-3 w-3" /> {issue}
               </a>
             )}
           </div>
           <div className="mt-2">
-            <TagPicker
-              selected={task.tags ?? []}
-              onChange={(tagIds) => setTaskTags.mutate({ taskId: task.id, tagIds })}
-            />
+            <TagPicker selected={task.tags ?? []} onChange={(tagIds) => setTaskTags.mutate({ taskId: task.id, tagIds })} />
           </div>
-        </div>
-        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
 
-      {/* Action banner */}
-      {needsAction && latestRun && (
-        <div className="mx-4 mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
-          <p className="text-xs font-semibold text-amber-800 mb-1">
-            {isGate
-              ? `Approval gate: ${latestRun.phase.replace("_", " ")} phase finished`
-              : "Needs your review"}
-          </p>
-          {latestRun.blocking_reason && (
-            <p className="text-xs text-amber-700 mb-2">{latestRun.blocking_reason}</p>
-          )}
-          {latestRun.summary && (
-            <p className="text-xs text-amber-900/80 mb-2 line-clamp-4">{latestRun.summary}</p>
-          )}
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => approve.mutate({ runId: latestRun.id })}
-              disabled={approve.isPending}
-            >
-              <CheckCircle className="w-3 h-3" /> Approve
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              className="h-7 text-xs"
-              onClick={() => reject.mutate({ runId: latestRun.id })}
-              disabled={reject.isPending}
-            >
-              <XCircle className="w-3 h-3" /> Reject
-            </Button>
-          </div>
-        </div>
-      )}
-
-      <div className="flex-1 overflow-y-auto">
-        {/* Description */}
-        {task.description && (
-          <div className="px-4 py-3 border-b">
-            <p className="text-xs text-muted-foreground mb-1 font-medium">Description</p>
-            <p className="text-sm">{task.description}</p>
-          </div>
-        )}
-
-        {/* Run timeline */}
-        <div className="px-4 py-3 border-b">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-muted-foreground font-medium">Run history</p>
-            {tokenSummary && tokenSummary.calls > 0 && (
-              <p className="text-[10px] text-muted-foreground">
-                {formatTokens(tokenSummary.tokens_in)} in / {formatTokens(tokenSummary.tokens_out)} out · ${tokenSummary.cost_usd.toFixed(2)}
-              </p>
-            )}
-          </div>
-          {runs && runs.length > 0 ? (
-            <div className="space-y-2">
-              {runs.map((run) => <RunRow key={run.id} run={run} />)}
+          {stages.length > 0 && (
+            <div className="mt-4">
+              <StageStepper stages={stages} currentStageId={task.workflow_stage_id} done={task.status === "done"} waiting={!!gated} />
             </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">No runs yet.</p>
           )}
-        </div>
+        </header>
 
-        {/* Artifact upload */}
-        {latestRun && (
-          <div className="px-4 py-3 border-b">
-            <p className="text-xs text-muted-foreground mb-2 font-medium">Upload evidence</p>
-            <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed text-xs text-muted-foreground hover:bg-muted cursor-pointer transition-colors">
-              <Upload className="w-3.5 h-3.5" />
-              <span>Drop screenshot, log, or test result</span>
-              <input
-                type="file"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file && latestRun) {
-                    const artifactType = file.type.startsWith("image/")
-                      ? "screenshot"
-                      : /test|junit|report/i.test(file.name) ? "test_result" : "log"
-                    uploadArtifact.mutate({ runId: latestRun.id, file, artifactType })
-                  }
-                }}
-              />
-            </label>
-          </div>
-        )}
-
-        {/* Comments */}
-        <div className="px-4 py-3">
-          <p className="text-xs text-muted-foreground mb-3 font-medium">Comments</p>
-          {comments && comments.length > 0 ? (
-            <div className="space-y-3">
-              {comments.map((c) => <CommentItem key={c.id} comment={c} taskId={task.id} />)}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">No comments yet.</p>
+        <div className="flex-1 overflow-y-auto">
+          {/* Gate */}
+          {gated && (
+            <section className="mx-5 mt-4 rounded-xl border border-warning/40 bg-warning/5 p-4" aria-label="Awaiting your decision">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <Hand className="h-4 w-4 text-warning" />
+                <h3 className="text-sm font-semibold">
+                  {gateStage ? `${gateStage.name} is waiting for you` : `${gated.phase[0].toUpperCase()}${gated.phase.slice(1)} phase is waiting for you`}
+                </h3>
+                {gated.outcome && (
+                  <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", OUTCOME_META[gated.outcome].tone)}>
+                    {OUTCOME_META[gated.outcome].label}
+                  </span>
+                )}
+              </div>
+              {gated.blocking_reason && <p className="mb-2 text-xs text-foreground/80">{gated.blocking_reason}</p>}
+              {blockingOpen > 0 && gateStage?.block_on_open_questions && (
+                <button onClick={() => setTab("overview")}
+                  className="mb-2 rounded-md bg-warning/15 px-2 py-1 text-[11px] font-medium text-warning hover:underline">
+                  Answer or defer {blockingOpen} blocking question{blockingOpen === 1 ? "" : "s"} first →
+                </button>
+              )}
+              {gated.summary && (
+                <div className="mb-3 max-h-48 overflow-y-auto rounded-lg border bg-background/70 px-3 py-2">
+                  <Markdown className="text-xs">{gated.summary}</Markdown>
+                </div>
+              )}
+              <GateActions runId={gated.id} taskId={task.id} />
+            </section>
           )}
-        </div>
-      </div>
 
-      {/* Comment input */}
-      <div className="border-t px-4 py-3 flex gap-2">
-        <input
-          value={commentBody}
-          onChange={(e) => setCommentBody(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendComment()}
-          placeholder="Add a comment..."
-          className="flex-1 text-sm px-3 py-2 rounded-lg border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-        />
-        <Button size="sm" onClick={handleSendComment} disabled={!commentBody.trim() || addComment.isPending} className="h-9">
-          <Send className="w-3.5 h-3.5" />
-        </Button>
-      </div>
+          <Tabs value={tab} onValueChange={setTab} className="px-5 pt-3">
+            <TabsList className="no-scrollbar h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent p-0">
+              <TabsTrigger value="overview" className={TAB_TRIGGER}>
+                Overview <Count n={openQuestions} tone="warning" />
+              </TabsTrigger>
+              <TabsTrigger value="documents" className={TAB_TRIGGER}>
+                Documents <Count n={documents?.length ?? 0} />
+              </TabsTrigger>
+              <TabsTrigger value="activity" className={TAB_TRIGGER}>
+                Activity <Count n={runs?.length ?? 0} />
+              </TabsTrigger>
+              <TabsTrigger value="discussion" className={TAB_TRIGGER}>Discussion</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-6 pb-8 pt-3">
+              <section>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Description</h3>
+                {task.description
+                  ? <Markdown>{task.description}</Markdown>
+                  : <p className="text-xs text-muted-foreground">No description.</p>}
+              </section>
+              <CriteriaEditor task={task} />
+              <QuestionsPanel taskId={task.id} />
+            </TabsContent>
+            <TabsContent value="documents" className="pb-8 pt-3">
+              <DocumentsPanel taskId={task.id} />
+            </TabsContent>
+            <TabsContent value="activity" className="pb-8 pt-3">
+              <ActivityPanel taskId={task.id} stages={stages} />
+            </TabsContent>
+            <TabsContent value="discussion" className="pb-8 pt-3">
+              <DiscussionPanel taskId={task.id} />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </aside>
     </div>
   )
 }

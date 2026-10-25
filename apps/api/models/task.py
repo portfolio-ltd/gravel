@@ -1,7 +1,7 @@
 import enum
 
+from sqlalchemy import JSON, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import BaseModel
@@ -44,6 +44,12 @@ class Task(BaseModel):
         String(36), ForeignKey("workflow_stages.id", ondelete="SET NULL"), nullable=True, index=True
     )
     rework_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # [{"id": str, "text": str, "done": bool, "source": "human" | "ai"}]
+    acceptance_criteria: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Imported from an external tracker, e.g. ("github", "owner/repo#123")
+    external_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
+    external_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     project = relationship("Project", back_populates="tasks")
     tags = relationship("Tag", secondary="task_tags", lazy="selectin")

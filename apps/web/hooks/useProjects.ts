@@ -22,7 +22,14 @@ export function useProject(id: string | null) {
 export function useCreateProject() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { name: string; default_model?: string; workflow_id?: string }) =>
+    mutationFn: (data: {
+      name: string
+      default_model?: string
+      workflow_id?: string
+      workflow_template?: string
+      issues_repo?: string
+      post_issue_comments?: boolean
+    }) =>
       apiFetch<Project>("/api/projects", { method: "POST", body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
   })
@@ -31,7 +38,15 @@ export function useCreateProject() {
 export function useUpdateProject(id: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { name?: string; default_model?: string; repo_url?: string | null; default_branch?: string; workflow_id?: string | null }) =>
+    mutationFn: (data: {
+      name?: string
+      default_model?: string
+      repo_url?: string | null
+      default_branch?: string
+      workflow_id?: string | null
+      issues_repo?: string | null
+      post_issue_comments?: boolean
+    }) =>
       apiFetch<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["projects"] })

@@ -51,6 +51,8 @@ async def create_workflow(db: AsyncSession, owner_id: str, data: WorkflowCreate,
             workflow_id=wf.id,
             name=stage.name,
             stage_order=stage.stage_order if stage.stage_order is not None else i,
+            role=_valid_role(stage.role),
+            block_on_open_questions=stage.block_on_open_questions,
             assigned_engineer_id=stage.assigned_engineer_id,
             requires_human_approval=stage.requires_human_approval,
             is_ai_executable=stage.is_ai_executable,
@@ -106,6 +108,8 @@ async def add_stage(db: AsyncSession, wf: Workflow, data: WorkflowStageCreate) -
         workflow_id=wf.id,
         name=data.name,
         stage_order=order,
+        role=_valid_role(data.role),
+        block_on_open_questions=data.block_on_open_questions,
         assigned_engineer_id=data.assigned_engineer_id,
         requires_human_approval=data.requires_human_approval,
         is_ai_executable=data.is_ai_executable,
@@ -120,6 +124,10 @@ async def add_stage(db: AsyncSession, wf: Workflow, data: WorkflowStageCreate) -
 
 async def update_stage(db: AsyncSession, wf: Workflow, stage: WorkflowStage, data: WorkflowStageUpdate) -> WorkflowStage:
     fields = data.model_dump(exclude_unset=True)  # explicit null clears nullable fields
+    if "role" in fields:
+        fields["role"] = _valid_role(fields["role"])
+    if fields.get("block_on_open_questions") is None:
+        fields.pop("block_on_open_questions", None)
     if "assigned_engineer_id" in fields or "rework_target_stage_id" in fields:
         await _validate_stage_refs(
             db, wf,
@@ -162,6 +170,14 @@ async def reorder_stages(db: AsyncSession, wf: Workflow, items: list[StageReorde
     await db.flush()
     await db.refresh(wf, ["stages"])
     return wf
+
+
+def _valid_role(role: str | None) -> str:
+    from services.sdlc import ROLE_KEYS
+    role = role or "custom"
+    if role not in ROLE_KEYS:
+        raise HTTPException(400, f"Unknown stage role '{role}'. Valid roles: {', '.join(ROLE_KEYS)}")
+    return role
 
 
 async def _validate_stage_refs(

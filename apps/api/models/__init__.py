@@ -5,6 +5,15 @@ from .organization import Organization, OrganizationMember, OrgRole
 from .prd import PRD, PRDComment, PRDStatus
 from .project import Project, ProjectDesignFile, ProjectStatus
 from .refresh_token import RefreshToken
+from .sdlc import (
+    DocumentKind,
+    KnowledgeEntry,
+    KnowledgeKind,
+    KnowledgeStatus,
+    OpenQuestion,
+    QuestionStatus,
+    TaskDocument,
+)
 from .tag import Tag, prd_tags, task_tags
 from .task import Task, TaskPriority, TaskStatus, TaskType
 from .task_run import (
@@ -37,4 +46,6 @@ __all__ = [
     "Tag", "task_tags", "prd_tags",
     "PRD", "PRDComment", "PRDStatus",
     "TokenUsage",
+    "TaskDocument", "DocumentKind", "OpenQuestion", "QuestionStatus",
+    "KnowledgeEntry", "KnowledgeKind", "KnowledgeStatus",
 ]

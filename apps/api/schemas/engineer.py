@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from config import settings
 from models.engineer import EngineerStatus
 
 
@@ -10,7 +11,7 @@ class EngineerCreate(BaseModel):
     template: str = "fullstack"
     skills_markdown: str | None = None
     model_provider: str = "anthropic"
-    model_name: str = "claude-sonnet-4-6"
+    model_name: str = settings.DEFAULT_MODEL
 
 
 class EngineerUpdate(BaseModel):

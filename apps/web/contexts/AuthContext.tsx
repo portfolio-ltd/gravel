@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
 import { User, TokenResponse, ApiError } from "@/types"
-import { apiFetch } from "@/lib/api"
+import { apiFetch, refreshOnce } from "@/lib/api"
 import { setTokens, clearTokens, hasRefreshToken, getRefreshToken } from "@/lib/auth"
 
 interface AuthContextValue {
@@ -24,18 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function restore() {
       if (!hasRefreshToken()) { setIsLoading(false); return }
       try {
-        const rt = getRefreshToken()!
-        const data = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/auth/refresh`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refresh_token: rt }),
-          }
-        )
-        if (!data.ok) throw new Error("Refresh failed")
-        const json = await data.json()
-        setTokens(json.access_token, rt)
+        if (!(await refreshOnce())) throw new Error("Refresh failed")
         const me = await apiFetch<User>("/api/auth/me")
         setUser(me)
       } catch {

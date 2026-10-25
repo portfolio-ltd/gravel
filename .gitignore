@@ -41,3 +41,9 @@ apps/web/.env.local
 *.njsproj
 *.sln
 *.sw?
+
+# Third-party proprietary material — never commit
+ai-sdlc/
+
+# Vite cache
+.vite

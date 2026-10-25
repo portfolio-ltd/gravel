@@ -11,6 +11,7 @@ class OrgOut(BaseModel):
     slug: str
     role: OrgRole          # the requesting user's role in this org
     member_count: int
+    appearance: dict | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -28,6 +29,7 @@ class OrgDetail(BaseModel):
     id: str
     name: str
     slug: str
+    appearance: dict | None = None
     created_at: datetime
     members: list[OrgMemberOut]
 
@@ -40,6 +42,7 @@ class OrgCreate(BaseModel):
 
 class OrgUpdate(BaseModel):
     name: str | None = None
+    appearance: dict | None = None
 
 
 class MemberAdd(BaseModel):

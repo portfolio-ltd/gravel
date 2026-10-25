@@ -1,0 +1,8 @@
+Gravel
+Copyright 2026 Gravel contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Gravel began as an independent multi-tenant rewrite inspired by the ideas of
+DevBoss (https://github.com/devbosshub/devboss). It does not include DevBoss
+source code.

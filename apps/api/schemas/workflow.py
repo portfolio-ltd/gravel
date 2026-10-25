@@ -6,6 +6,8 @@ from pydantic import BaseModel
 class WorkflowStageCreate(BaseModel):
     name: str
     stage_order: int | None = None  # None → appended after the current max
+    role: str = "custom"
+    block_on_open_questions: bool = False
     assigned_engineer_id: str | None = None
     requires_human_approval: bool = False
     is_ai_executable: bool = True
@@ -17,6 +19,8 @@ class WorkflowStageCreate(BaseModel):
 class WorkflowStageUpdate(BaseModel):
     # Apply with model_dump(exclude_unset=True): an explicit null clears the field
     name: str | None = None
+    role: str | None = None
+    block_on_open_questions: bool | None = None
     assigned_engineer_id: str | None = None
     requires_human_approval: bool | None = None
     is_ai_executable: bool | None = None
@@ -30,6 +34,8 @@ class WorkflowStageOut(BaseModel):
     workflow_id: str
     name: str
     stage_order: int
+    role: str = "custom"
+    block_on_open_questions: bool = False
     assigned_engineer_id: str | None
     requires_human_approval: bool
     is_ai_executable: bool
@@ -60,11 +66,17 @@ class WorkflowOut(BaseModel):
     owner_id: str
     name: str
     description: str | None
+    template_key: str | None = None
     created_at: datetime
     updated_at: datetime
     stages: list[WorkflowStageOut] = []
 
     model_config = {"from_attributes": True}
+
+
+class WorkflowFromTemplate(BaseModel):
+    template_key: str
+    name: str | None = None
 
 
 class StageReorderItem(BaseModel):

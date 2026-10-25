@@ -3,8 +3,9 @@
 import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { Zap, Loader2, MailCheck, MailX } from "lucide-react"
+import { Loader2, MailCheck, MailX } from "lucide-react"
 import { apiFetch } from "@/lib/api"
+import { AuthCard } from "@/components/marketing/AuthShell"
 
 function VerifyEmailBody() {
   const token = useSearchParams().get("token") ?? ""
@@ -51,30 +52,22 @@ function VerifyEmailBody() {
 
   return (
     <div className="text-center py-6">
-      <MailCheck className="w-10 h-10 text-emerald-600 mx-auto mb-3" />
+      <MailCheck className="w-10 h-10 text-success mx-auto mb-3" />
       <h1 className="font-semibold mb-1">Email confirmed</h1>
       <p className="text-sm text-muted-foreground mb-4">
         {email} is verified. You're all set.
       </p>
-      <Link href="/projects" className="text-sm text-primary hover:underline">Open the app</Link>
+      <Link href="/home" className="text-sm text-primary hover:underline">Open the app</Link>
     </div>
   )
 }
 
 export default function VerifyEmailPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
-      <div className="w-full max-w-sm bg-background rounded-2xl border shadow-sm p-6">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <Zap className="w-4 h-4 text-primary-foreground" />
-          </div>
-          <span className="font-bold">Gravel</span>
-        </div>
-        <Suspense>
-          <VerifyEmailBody />
-        </Suspense>
-      </div>
-    </div>
+    <AuthCard>
+      <Suspense>
+        <VerifyEmailBody />
+      </Suspense>
+    </AuthCard>
   )
 }

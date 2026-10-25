@@ -40,7 +40,7 @@ from models.task_run import (
     TaskRunPhase,
 )
 from models.workflow import WorkflowStage
-from services import ws_manager
+from services import sdlc, ws_manager
 from services.tasks import recalculate_progress
 
 logger = logging.getLogger(__name__)
@@ -297,7 +297,9 @@ def build_task_bundle(task: Task, project: Project, engineer: Engineer | None,
             f"# {task.title}\n\n"
             f"Status: {task.status.value} · Priority: {task.priority.value} · Type: {task.type.value}\n\n"
             f"## Requirements\n{task.description or 'No description provided.'}\n\n"
-            f"## Open Questions\n{open_questions}\n"
+            f"## Acceptance criteria\n{sdlc.render_criteria(task)}\n\n"
+            f"## Flagged comments\n{open_questions}\n"
+            + (f"\n## Source\n{task.external_url}\n" if task.external_url else "")
         ),
         "COMMENTS.md": comment_thread,
         "PROJECT_CONTEXT.md": (
@@ -319,8 +321,10 @@ def _stage_instructions_doc(stage: WorkflowStage, position: tuple[int, int] | No
     header = f"# Stage: {stage.name}"
     if position:
         header += f" (step {position[0]}/{position[1]})"
-    body = stage.stage_instructions or f"Complete the '{stage.name}' stage for this task."
-    return f"{header}\n\n{body}\n"
+    role = sdlc.role_of(stage)
+    if stage.role and stage.role != "custom":
+        header += f"\n\nRole: {role['label']} — {role['description']}"
+    return f"{header}\n\n{sdlc.stage_instructions(stage)}\n"
 
 
 async def apply_outcome(
@@ -332,10 +336,20 @@ async def apply_outcome(
     branch_name: str | None = None,
     pr_url: str | None = None,
     deploy_url: str | None = None,
+    artifacts: "sdlc.StageArtifacts | None" = None,
 ) -> TaskRun:
     """Apply an agent-reported outcome: set gates, statuses, changelog, WS events."""
     task = await db.get(Task, run.task_id, options=[selectinload(Task.project)])
     project = task.project
+
+    if artifacts is not None and not artifacts.empty:
+        await sdlc.apply_artifacts(db, task, project, artifacts, run_id=run.id, stage_id=run.workflow_stage_id)
+        await ws_manager.broadcast(project.id, {"type": "task.artifacts", "task_id": task.id})
+    # A review or verification that asks for changes is a failed stage: it
+    # follows the stage's rework loop back to the builder.
+    if artifacts is not None and artifacts.verdict == "changes_requested" and outcome in STAGE_COMPLETE_OUTCOMES:
+        outcome = TaskRunOutcome.failed
+        blocking_reason = blocking_reason or "Changes requested"
 
     now = datetime.now(timezone.utc)
     run.outcome = outcome
@@ -384,6 +398,14 @@ async def apply_outcome(
             body=summary[:2000],
             action_flag="needs_review" if run.approval_required else None,
         ))
+
+    if summary:
+        from services.issues import schedule_issue_comment
+        unit = run.phase.value.capitalize()
+        if run.workflow_stage_id:
+            stage_row = await db.get(WorkflowStage, run.workflow_stage_id)
+            unit = stage_row.name if stage_row else "Stage"
+        schedule_issue_comment(project, task, f"**{unit}** — `{run.outcome.value}`\n\n{summary[:3000]}")
 
     if changelog_msg:
         db.add(ChangelogEntry(
@@ -450,6 +472,16 @@ async def _apply_stage_outcome(
     stages = await ordered_stages(db, stage.workflow_id)
 
     if outcome in STAGE_COMPLETE_OUTCOMES:
+        if stage.block_on_open_questions:
+            pending = await sdlc.open_blocking_questions(db, task.id)
+            if pending:
+                run.outcome = TaskRunOutcome.needs_human_input
+                run.approval_required = True
+                run.blocking_reason = (
+                    f"{pending} open question{'s' if pending != 1 else ''} must be answered or deferred "
+                    f"before '{stage.name}' can be approved — approving re-runs the stage with the answers"
+                )
+                return f"Stage '{stage.name}' waiting on open questions: {task.title}"
         if stage.requires_human_approval:
             run.approval_required = True
             run.blocking_reason = blocking_reason or f"Awaiting approval: stage '{stage.name}' complete"
@@ -486,6 +518,20 @@ async def _apply_stage_outcome(
     run.blocking_reason = blocking_reason or (
         f"Stage '{stage.name}' {outcome.value} (attempt {run.attempt_number}) — needs human attention"
     )
+    return None
+
+
+async def approval_blocker(db: AsyncSession, run: TaskRun) -> str | None:
+    """Why this gated run can't be approved yet, or None."""
+    if not run.workflow_stage_id:
+        return None
+    stage = await db.get(WorkflowStage, run.workflow_stage_id)
+    if stage is None or not stage.block_on_open_questions:
+        return None
+    pending = await sdlc.open_blocking_questions(db, run.task_id)
+    if pending:
+        return (f"{pending} blocking question{'s' if pending != 1 else ''} still open — "
+                "answer, defer or dismiss them first")
     return None
 
 

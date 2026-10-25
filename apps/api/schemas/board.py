@@ -3,12 +3,17 @@ from pydantic import BaseModel
 from schemas.task import TaskOut
 
 
+class BoardTaskOut(TaskOut):
+    open_question_count: int = 0  # open blocking questions
+    stage_name: str | None = None
+
+
 class BoardColumn(BaseModel):
     key: str            # unique lane key: "status:<value>" or "stage:<id>"
     label: str          # human lane title
     status: str | None  # set for default status lanes (drag target); None for stage lanes
     stage_id: str | None = None
-    tasks: list[TaskOut]
+    tasks: list[BoardTaskOut]
 
 
 class BoardOut(BaseModel):

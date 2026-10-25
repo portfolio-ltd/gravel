@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
-import type { Organization, OrganizationDetail, OrgRole } from "@/types"
+import type { Organization, OrganizationDetail, OrgAppearanceSettings, OrgRole } from "@/types"
 
 export function useOrganizations() {
   return useQuery<Organization[]>({
@@ -36,7 +36,7 @@ export function useCreateOrg() {
 export function useUpdateOrg() {
   const invalidate = useInvalidateOrgs()
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name: string }) =>
+    mutationFn: ({ id, ...data }: { id: string; name?: string; appearance?: OrgAppearanceSettings | null }) =>
       apiFetch<OrganizationDetail>(`/api/organizations/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     onSuccess: invalidate,
   })

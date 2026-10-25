@@ -13,6 +13,7 @@ router = APIRouter(prefix="/projects/{project_id}/changelog", tags=["changelog"]
 async def list_changelog(
     project_id: str,
     current_user: CurrentUser,
+    org: CurrentOrg,
     db: DB,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),

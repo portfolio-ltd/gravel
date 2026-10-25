@@ -19,8 +19,8 @@ async function _doRefresh(): Promise<boolean> {
     })
     if (!res.ok) { clearTokens(); return false }
     const data = await res.json()
-    // Preserve existing refresh token (server returns new access only)
-    setTokens(data.access_token, rt)
+    // Refresh tokens rotate server-side — the old one is now revoked
+    setTokens(data.access_token, data.refresh_token ?? rt)
     return true
   } catch {
     clearTokens()
@@ -28,7 +28,9 @@ async function _doRefresh(): Promise<boolean> {
   }
 }
 
-async function refreshOnce(): Promise<boolean> {
+/** Single-flight session refresh, shared by the auth bootstrap and 401 retries.
+ *  Refresh tokens rotate, so two concurrent refreshes would revoke each other. */
+export async function refreshOnce(): Promise<boolean> {
   if (!_refreshPromise) {
     _refreshPromise = _doRefresh().finally(() => { _refreshPromise = null })
   }

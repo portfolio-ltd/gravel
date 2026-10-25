@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # Base URL of the web app, used to build email links
     WEB_BASE_URL: str = "http://localhost:3000"
 
+    # ── LLM defaults ──────────────────────────────────────────────────────────
+    # Model used when a project/engineer doesn't name one. Any id from
+    # services/model_catalog.py works; keys are BYOK per user.
+    DEFAULT_MODEL: str = "claude-opus-5-5"
+
     # ── Misc ──────────────────────────────────────────────────────────────────
     SHOW_DOCS: bool = True
     DEBUG: bool = False

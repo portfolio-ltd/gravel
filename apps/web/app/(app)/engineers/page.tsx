@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Bot, Plus, X } from "lucide-react"
 import { useEngineers, useCreateEngineer, useUpdateEngineer } from "@/hooks/useEngineers"
+import { useMeta } from "@/hooks/useSdlc"
 import EngineerCard from "@/components/EngineerCard"
 import { Button } from "@/components/ui/button"
 import type { Engineer, EngineerCreate } from "@/types"
@@ -25,13 +26,18 @@ function EngineerDialog({
   const [name, setName] = useState(initial?.name ?? "")
   const [template, setTemplate] = useState(initial?.template ?? "fullstack")
   const [skills, setSkills] = useState(initial?.skills_markdown ?? TEMPLATES[2].skills)
+  const { data: meta } = useMeta()
   const [provider, setProvider] = useState(initial?.model_provider ?? "anthropic")
-  const [modelName, setModelName] = useState(initial?.model_name ?? "claude-sonnet-4-6")
+  const [modelName, setModelName] = useState(initial?.model_name ?? "")
+  const providerModels = (meta?.models ?? []).filter((m) => m.provider === provider)
+  // New engineers start on the server default (or the provider's first catalog model)
+  const effectiveModel = modelName || (provider === "anthropic" && meta?.default_model?.startsWith("claude")
+    ? meta.default_model : providerModels[0]?.id ?? "")
 
-  const PROVIDER_DEFAULT_MODEL: Record<string, string> = {
-    anthropic: "claude-sonnet-4-6",
-    openai: "gpt-5.2",
-    groq: "llama-4.1-70b",
+  function defaultModelFor(p: string): string {
+    const models = (meta?.models ?? []).filter((m) => m.provider === p)
+    if (meta && models.some((m) => m.id === meta.default_model)) return meta.default_model
+    return models[0]?.id ?? ""
   }
 
   function handleTemplateChange(t: string) {
@@ -84,7 +90,7 @@ function EngineerDialog({
                 value={provider}
                 onChange={(e) => {
                   setProvider(e.target.value)
-                  setModelName(PROVIDER_DEFAULT_MODEL[e.target.value] ?? modelName)
+                  setModelName(defaultModelFor(e.target.value))
                 }}
                 className="w-full text-sm px-3 py-2 rounded-lg border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
               >
@@ -96,10 +102,16 @@ function EngineerDialog({
             <div>
               <label className="text-xs font-medium text-muted-foreground block mb-1.5">Model</label>
               <input
-                value={modelName}
+                value={effectiveModel}
                 onChange={(e) => setModelName(e.target.value)}
+                list="engineer-models"
+                aria-label="Model"
+                placeholder="model id"
                 className="w-full text-sm px-3 py-2 rounded-lg border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono"
               />
+              <datalist id="engineer-models">
+                {providerModels.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </datalist>
             </div>
           </div>
           <div>
@@ -116,8 +128,8 @@ function EngineerDialog({
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button
             size="sm"
-            onClick={() => onSave({ name, template, skills_markdown: skills, model_provider: provider, model_name: modelName })}
-            disabled={!name.trim()}
+            onClick={() => onSave({ name, template, skills_markdown: skills, model_provider: provider, model_name: effectiveModel })}
+            disabled={!name.trim() || !effectiveModel.trim()}
           >
             {initial ? "Save changes" : "Create"}
           </Button>

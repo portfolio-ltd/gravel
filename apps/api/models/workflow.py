@@ -15,6 +15,8 @@ class Workflow(BaseModel):
     organization_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Built-in template this workflow was created from (services/sdlc.py), if any
+    template_key: Mapped[str | None] = mapped_column(String(60), nullable=True)
 
     stages: Mapped[list["WorkflowStage"]] = relationship(
         "WorkflowStage",
@@ -32,6 +34,11 @@ class WorkflowStage(BaseModel):
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     stage_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Methodology role (services/sdlc.py STAGE_ROLES): default instructions,
+    # which documents the stage produces, and how its result is interpreted
+    role: Mapped[str] = mapped_column(String(40), nullable=False, default="custom")
+    # Park completed runs while the task still has open blocking questions
+    block_on_open_questions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     assigned_engineer_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("engineers.id", ondelete="SET NULL"), nullable=True
     )

@@ -1,23 +1,22 @@
 "use client"
 
-import { useState, useRef } from "react"
-import { Loader2, Upload, FileText, X, CheckCircle2, ChevronRight, Zap } from "lucide-react"
+import { useEffect, useState, useRef } from "react"
+import { Loader2, Upload, FileText, X, CheckCircle2, ChevronRight, Zap, Github, Sparkles } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import { Field, Input, Select, Switch } from "@/components/ui/form"
 import { cn } from "@/lib/utils"
 import { useCreateProject } from "@/hooks/useProjects"
 import { useWorkflows } from "@/hooks/useWorkflows"
 import { useUploadFile, useParseAgent } from "@/hooks/useAgent"
+import { useMeta } from "@/hooks/useSdlc"
+import { usePreferences } from "@/contexts/PreferencesContext"
 import { toast } from "sonner"
 import type { Project } from "@/types"
 
-const MODELS = [
-  { value: "claude-sonnet-4-6",      label: "Claude Sonnet 4.6",  note: "Recommended" },
-  { value: "claude-opus-4-6",        label: "Claude Opus 4.6",    note: "Most capable" },
-  { value: "gpt-4o",                 label: "GPT-4o",             note: "OpenAI" },
-  { value: "llama-3.3-70b-versatile",label: "Llama 3.3 70B",      note: "Groq (fast)" },
-]
+/** "tpl:<template key>" | "wf:<workflow id>" | "default" */
+type WorkflowChoice = string
 
 type Step = "name" | "upload" | "parsing" | "preview"
 
@@ -37,9 +36,17 @@ interface CreateProjectDialogProps {
 export default function CreateProjectDialog({ open, onOpenChange, onCreated }: CreateProjectDialogProps) {
   const [step, setStep] = useState<Step>("name")
   const [name, setName] = useState("")
-  const [model, setModel] = useState("claude-sonnet-4-6")
-  const [workflowId, setWorkflowId] = useState<string | null>(null)
+  const { data: meta } = useMeta()
+  const { prefs } = usePreferences()
   const { data: workflows } = useWorkflows()
+  const preferredModel = prefs.defaultModel ?? meta?.default_model ?? ""
+  const recommendedTemplate = meta?.workflow_templates.find((t) => t.recommended) ?? meta?.workflow_templates[0]
+  const initialWorkflow: WorkflowChoice = recommendedTemplate ? `tpl:${recommendedTemplate.key}` : "default"
+  const [model, setModel] = useState("")
+  const [workflowChoice, setWorkflowChoice] = useState<WorkflowChoice>("")
+  const [showIssues, setShowIssues] = useState(false)
+  const [issuesRepo, setIssuesRepo] = useState("")
+  const [postComments, setPostComments] = useState(false)
   const [project, setProject] = useState<Project | null>(null)
   const [parsedTasks, setParsedTasks] = useState<ParsedTask[]>([])
   const [prdFile, setPrdFile] = useState<File | null>(null)
@@ -50,11 +57,18 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
   const uploadFile = useUploadFile()
   const parseAgent = useParseAgent()
 
+  // Defaults arrive asynchronously (meta + preferences); fill them once
+  useEffect(() => { if (!model && preferredModel) setModel(preferredModel) }, [model, preferredModel])
+  useEffect(() => { if (!workflowChoice && meta) setWorkflowChoice(initialWorkflow) }, [workflowChoice, meta, initialWorkflow])
+
   function reset() {
     setStep("name")
     setName("")
-    setModel("claude-sonnet-4-6")
-    setWorkflowId(null)
+    setModel(preferredModel)
+    setWorkflowChoice(initialWorkflow)
+    setShowIssues(false)
+    setIssuesRepo("")
+    setPostComments(false)
     setProject(null)
     setParsedTasks([])
     setPrdFile(null)
@@ -66,14 +80,29 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
     setTimeout(reset, 300)
   }
 
-  async function handleCreateAndUpload() {
+  async function handleCreateAndUpload(skipPrd = false) {
     if (!name.trim()) return
+    const file = skipPrd ? null : prdFile
+    let created: Project | null = null
     try {
-      const proj = await createProject.mutateAsync({ name: name.trim(), default_model: model, workflow_id: workflowId ?? undefined })
+      const proj = await createProject.mutateAsync({
+        name: name.trim(),
+        default_model: model || undefined,
+        workflow_id: workflowChoice.startsWith("wf:") ? workflowChoice.slice(3) : undefined,
+        workflow_template: workflowChoice.startsWith("tpl:") ? workflowChoice.slice(4) : undefined,
+        issues_repo: issuesRepo.trim() || undefined,
+        post_issue_comments: issuesRepo.trim() ? postComments : undefined,
+      })
+      created = proj
       setProject(proj)
-      if (prdFile) {
-        await uploadFile.mutateAsync({ projectId: proj.id, file: prdFile, fileType: "prd" })
+      if (!file) {
+        // Nothing to parse — the project is ready for manual tasks or an issue import
+        toast.success(`Created ${proj.name}`)
+        onCreated?.(proj)
+        handleClose()
+        return
       }
+      await uploadFile.mutateAsync({ projectId: proj.id, file, fileType: "prd" })
       // Start parsing with progress animation
       setStep("parsing")
       let prog = 0
@@ -90,7 +119,13 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create project"
       toast.error(message)
-      setStep("name")
+      // If the project already exists, don't strand the user on a form that would create a duplicate
+      if (created) {
+        onCreated?.(created)
+        handleClose()
+      } else {
+        setStep("name")
+      }
     }
   }
 
@@ -119,50 +154,85 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
         {/* Step: name + model */}
         {step === "name" && (
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Project name</label>
-              <input
+            <Field label="Project name">
+              <Input
                 autoFocus
-                className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
                 placeholder="My awesome app"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && name.trim() && setStep("upload")}
               />
-            </div>
+            </Field>
+            <Field
+              label="Workflow"
+              hint={workflowChoice.startsWith("tpl:")
+                ? meta?.workflow_templates.find((t) => `tpl:${t.key}` === workflowChoice)?.description
+                : workflowChoice === "default" ? "Groom → build → test → deploy, with a gate after each phase." : undefined}
+            >
+              <Select value={workflowChoice} onChange={(e) => setWorkflowChoice(e.target.value)}>
+                {(meta?.workflow_templates.length ?? 0) > 0 && (
+                  <optgroup label="Templates">
+                    {meta!.workflow_templates.map((t) => (
+                      <option key={t.key} value={`tpl:${t.key}`}>{t.name}{t.recommended ? " (recommended)" : ""}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {(workflows ?? []).length > 0 && (
+                  <optgroup label="Your workflows">
+                    {workflows!.map((wf) => (
+                      <option key={wf.id} value={`wf:${wf.id}`}>{wf.name} ({wf.stages.length} stages)</option>
+                    ))}
+                  </optgroup>
+                )}
+                <option value="default">Default pipeline</option>
+              </Select>
+            </Field>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Default model</label>
-              <div className="grid grid-cols-2 gap-2">
-                {MODELS.map((m) => (
+              <span className="text-xs font-medium text-foreground/80">Default model</span>
+              <div className="grid max-h-52 grid-cols-1 gap-2 overflow-y-auto pr-0.5 sm:grid-cols-2">
+                {(meta?.models ?? []).map((m) => (
                   <button
-                    key={m.value}
+                    key={m.id}
                     type="button"
-                    onClick={() => setModel(m.value)}
+                    onClick={() => setModel(m.id)}
+                    aria-pressed={model === m.id}
                     className={cn(
-                      "text-left rounded-xl border-2 px-3 py-2.5 transition-all",
-                      model === m.value
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-muted-foreground/40"
+                      "rounded-xl border-2 px-3 py-2 text-left transition-all",
+                      model === m.id ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"
                     )}
                   >
-                    <p className="text-xs font-semibold">{m.label}</p>
+                    <p className="flex items-center gap-1 text-xs font-semibold">
+                      {m.label}
+                      {m.id === meta?.default_model && <Sparkles className="h-3 w-3 text-primary" aria-label="server default" />}
+                    </p>
                     <p className="text-[10px] text-muted-foreground">{m.note}</p>
                   </button>
                 ))}
+                {!meta && [0, 1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded-xl bg-muted" />)}
               </div>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Workflow</label>
-              <select
-                value={workflowId ?? ""}
-                onChange={(e) => setWorkflowId(e.target.value || null)}
-                className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            <div className="rounded-xl border">
+              <button
+                type="button"
+                onClick={() => setShowIssues((v) => !v)}
+                aria-expanded={showIssues}
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium"
               >
-                <option value="">None — default pipeline (groom → build → test → deploy)</option>
-                {(workflows ?? []).map((wf) => (
-                  <option key={wf.id} value={wf.id}>{wf.name} ({wf.stages.length} stages)</option>
-                ))}
-              </select>
+                <Github className="h-3.5 w-3.5" /> Sync with GitHub issues
+                <span className="font-normal text-muted-foreground">— optional</span>
+                <ChevronRight className={cn("ml-auto h-3.5 w-3.5 transition-transform", showIssues && "rotate-90")} />
+              </button>
+              {showIssues && (
+                <div className="space-y-3 border-t px-3 py-3">
+                  <Field label="Issues repository" hint="owner/repo or a GitHub URL. Import issues from the project page.">
+                    <Input value={issuesRepo} onChange={(e) => setIssuesRepo(e.target.value)} placeholder="acme/web" className="font-mono text-xs" />
+                  </Field>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs">Post stage results as issue comments</span>
+                    <Switch checked={postComments} onChange={setPostComments} disabled={!issuesRepo.trim()} label="Post stage results as issue comments" />
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex justify-end pt-1">
               <Button disabled={!name.trim()} onClick={() => setStep("upload")}>
@@ -212,10 +282,10 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
             <div className="flex justify-between pt-1">
               <Button variant="outline" onClick={() => setStep("name")}>Back</Button>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={handleCreateAndUpload} disabled={isCreating}>
+                <Button variant="outline" onClick={() => { setPrdFile(null); void handleCreateAndUpload(true) }} disabled={isCreating}>
                   {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : "Skip & create"}
                 </Button>
-                <Button onClick={handleCreateAndUpload} disabled={isCreating || !prdFile}>
+                <Button onClick={() => handleCreateAndUpload()} disabled={isCreating || !prdFile}>
                   {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Parse PRD <Zap className="w-4 h-4" /></>}
                 </Button>
               </div>
@@ -243,7 +313,7 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
         {/* Step: preview */}
         {step === "preview" && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-success">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <p className="text-sm font-medium">{parsedTasks.length} tasks generated successfully</p>
             </div>

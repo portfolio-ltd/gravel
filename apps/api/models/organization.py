@@ -1,7 +1,7 @@
 import enum
 
+from sqlalchemy import JSON, ForeignKey, String, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import BaseModel
@@ -18,6 +18,8 @@ class Organization(BaseModel):
 
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
+    # Default appearance for members who haven't customized theirs (accent, logo text...)
+    appearance: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     members: Mapped[list["OrganizationMember"]] = relationship(
         "OrganizationMember", back_populates="organization", cascade="all, delete-orphan"

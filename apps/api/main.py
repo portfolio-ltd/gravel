@@ -7,7 +7,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 # Import all models so Alembic/SQLAlchemy picks them up
 import models  # noqa: F401
@@ -26,6 +25,7 @@ from routers import (
     organizations,
     prds,
     projects,
+    sdlc,
     tags,
     task_runs,
     tasks,
@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Gravel API",
-    version="0.1.0",
+    version="0.2.0",
     docs_url="/docs" if settings.SHOW_DOCS else None,
     redoc_url="/redoc" if settings.SHOW_DOCS else None,
     lifespan=lifespan,
@@ -126,8 +126,9 @@ app.include_router(workflows.router,   prefix=API)
 app.include_router(organizations.router, prefix=API)
 app.include_router(tags.router,        prefix=API)
 app.include_router(prds.router,        prefix=API)
+app.include_router(sdlc.router,        prefix=API)
 app.include_router(ws.router)  # /ws/{project_id} — no /api prefix
 
-# ── Uploaded files (PRDs, designs, evidence artifacts) ───────────────────────
+# Uploaded files are not served statically — evidence downloads go through the
+# authenticated GET /api/artifacts/{id}/download.
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

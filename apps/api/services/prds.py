@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from config import settings
 from db.base import new_uuid
 from models.prd import PRD, PRDComment, PRDStatus
 from models.project import Project
@@ -66,7 +67,7 @@ async def add_comment(db: AsyncSession, prd: PRD, body: str,
 
 async def chat(db: AsyncSession, prd: PRD, user: User, message: str, model: str | None) -> PRDChatResponse:
     keys = get_plain_keys(user)
-    model = model or "claude-sonnet-4-6"
+    model = model or settings.DEFAULT_MODEL
     provider = pick_provider(keys, model)
     if provider is None:
         raise HTTPException(400, "No LLM API key configured — add one in Settings → API Keys")
@@ -128,7 +129,7 @@ async def split(db: AsyncSession, prd: PRD, user: User, model: str | None) -> li
     from services.parser import parse_prd_text
     keys = get_plain_keys(user)
     tasks, usage = await parse_prd_text(prd.body_markdown or prd.summary or prd.title,
-                                        model or "claude-sonnet-4-6", keys)
+                                        model or settings.DEFAULT_MODEL, keys)
     if usage:
         await record_usage(
             db, model=usage.model, tokens_in=usage.tokens_in, tokens_out=usage.tokens_out,

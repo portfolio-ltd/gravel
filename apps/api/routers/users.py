@@ -4,7 +4,8 @@ from fastapi import APIRouter, HTTPException
 
 from dependencies import DB, CurrentUser, require_roles
 from models.user import User, UserRole
-from schemas.user import ApiKeysIn, ApiKeysMasked, InviteUserRequest, UserOut, UserUpdate
+from schemas.sdlc import PreferencesOut
+from schemas.user import ApiKeysIn, ApiKeysMasked, InviteUserRequest, PreferencesIn, UserOut, UserUpdate
 from services.auth import get_user_by_email, hash_password
 from services.users import (
     deactivate_user,
@@ -23,6 +24,22 @@ AdminOnly = require_roles(UserRole.admin)
 @router.get("", response_model=list[UserOut])
 async def list_all_users(db: DB, _: User = AdminOnly):  # type: ignore[assignment]
     return await list_users(db)
+
+
+@router.get("/me/preferences", response_model=PreferencesOut)
+async def get_preferences(current_user: CurrentUser):
+    return PreferencesOut(preferences=current_user.preferences or {})
+
+
+@router.put("/me/preferences", response_model=PreferencesOut)
+async def put_preferences(body: PreferencesIn, current_user: CurrentUser, db: DB):
+    import json
+    if len(json.dumps(body.preferences)) > 32_000:
+        raise HTTPException(status_code=413, detail="Preferences are too large")
+    current_user.preferences = body.preferences
+    db.add(current_user)
+    await db.flush()
+    return PreferencesOut(preferences=current_user.preferences)
 
 
 @router.get("/{user_id}", response_model=UserOut)
