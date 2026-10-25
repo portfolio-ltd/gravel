@@ -7,8 +7,19 @@ engineers doing the work and a human approving every gate.
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/portfolio-ltd/gravel/actions/workflows/ci.yml/badge.svg)](https://github.com/portfolio-ltd/gravel/actions/workflows/ci.yml)
 
-> _Screenshots coming soon — run the quick start below; the whole flow works
-> offline in simulated mode, no API key needed._
+![A task moving through Analyze, Refine spec, Plan, Build, Review and Verify, with a blocking open question answered along the way](docs/images/demo.gif)
+
+<sub>Recorded in simulated mode (`SEED_DEMO=true`, no API key): one task goes
+from analysis to done, stopping at each human gate.</sub>
+
+### Screenshots
+
+| | |
+|---|---|
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.png"><img src="docs/images/board-light.png" alt="Board: lanes follow the workflow stages; cards waiting at a gate show Approve and Request changes"></picture><br>**Board** — lanes are workflow stages; gates are actionable from the card. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/task-documents-dark.png"><img src="docs/images/task-documents-light.png" alt="A finished task's documents: analysis, spec, technical plan, acceptance scenarios, review and verification"></picture><br>**Documents** — analysis → spec → plan → review → verification, versioned per task. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/question-gate-dark.png"><img src="docs/images/question-gate-light.png" alt="The Plan gate held back by a blocking open question with an owner"></picture><br>**Open-question gate** — a blocking question holds the plan until a person answers it. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/attention-dark.png"><img src="docs/images/attention-light.png" alt="Attention page listing decisions waiting across projects"></picture><br>**Attention** — every decision waiting on you, in one place. |
+
+Screenshots follow your GitHub theme (light or dark).
 
 ---
 
