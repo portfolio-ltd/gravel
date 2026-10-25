@@ -35,6 +35,33 @@ public hostnames to the tunnel:
 Docker network, so it reaches them directly. WebSockets work through the
 tunnel without extra settings.
 
+### Already running a tunnel on this Pi?
+
+You can add Gravel's hostnames to an existing tunnel instead of creating a
+new one, but that tunnel's `cloudflared` lives on another compose project's
+network. Two things change:
+
+- **Use Gravel's container names**, not the service names. `web` and `api`
+  are common service names, so on another project's network they may resolve
+  to *that* project's containers — your Gravel hostname would then serve the
+  other app. Route to `http://gravel-web-1:3000` and `http://gravel-api-1:8000`
+  (the names `docker compose ps` shows).
+- **Attach that `cloudflared` to Gravel's network**, in the other project's
+  compose file, so the names resolve:
+
+  ```yaml
+  services:
+    cloudflared:
+      networks: [default, gravel]
+  networks:
+    gravel:
+      external: true
+      name: gravel_default
+  ```
+
+  Start Gravel first — the other stack can't start its `cloudflared` until
+  `gravel_default` exists. Skip `docker-compose.cloudflare.yml` in step 4.
+
 ## 3. Configure
 
 ```bash
@@ -110,5 +137,15 @@ Open `https://gravel.example.com` and create your account.
   `NEXT_PUBLIC_API_URL`. Rebuild `web` after changing it.
 - **Tunnel shows 502** — check `docker compose ps`; the hostnames must point
   at `web:3000` / `api:8000`, not `localhost`.
+- **Error 1033 / HTTP 530** — the hostname's DNS record points at a tunnel
+  with no running connector, often an older tunnel. Its CNAME must target the
+  same `<tunnel-id>.cfargotunnel.com` as the tunnel that routes it; delete the
+  record and re-save the public hostname to recreate it.
+- **Your domain shows a different app** — the tunnel shares a network with
+  another stack whose services are also called `web` / `api`. Route to the
+  container names instead (see *Already running a tunnel on this Pi?*).
+- **"Invalid email or password" on first login** — a fresh install has no
+  accounts; sign up first. Without SMTP, the verification link is in
+  `docker compose logs api`.
 - **Out of memory during build** — raise `CONF_SWAPSIZE` in `/etc/dphys-swapfile`, or build
   the web image on another machine with `docker buildx build --platform linux/arm64`.
