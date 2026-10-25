@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     RUNTIME_API_BASE_URL: str = "http://host.docker.internal:8000"
     RUNTIME_POLL_INTERVAL_SECONDS: int = 15
     RUNTIME_HEARTBEAT_INTERVAL_SECONDS: int = 60
+    RUNTIME_EXECUTOR: str = "opencode"    # opencode | claude-code (needs an Anthropic model) | llm
 
     # ── Git integrations ──────────────────────────────────────────────────────
     GITHUB_CLIENT_ID: str = ""

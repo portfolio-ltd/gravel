@@ -164,6 +164,7 @@ async def start_runtime(db: AsyncSession, engineer: Engineer, runtime: EngineerR
         "GRAVEL_RUNTIME_TOKEN": token,
         "GRAVEL_MODEL_PROVIDER": engineer.model_provider,
         "GRAVEL_MODEL_NAME": engineer.model_name,
+        "GRAVEL_EXECUTOR": settings.RUNTIME_EXECUTOR,
         "GRAVEL_POLL_INTERVAL_SECONDS": str(settings.RUNTIME_POLL_INTERVAL_SECONDS),
         "GRAVEL_HEARTBEAT_INTERVAL_SECONDS": str(settings.RUNTIME_HEARTBEAT_INTERVAL_SECONDS),
     })
