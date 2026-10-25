@@ -5,7 +5,7 @@ issues into analyzed specs, reviewed plans and verified code — with AI
 engineers doing the work and a human approving every gate.
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![CI](https://github.com/sagarchandagarwal/gravel/actions/workflows/ci.yml/badge.svg)](https://github.com/sagarchandagarwal/gravel/actions/workflows/ci.yml)
+[![CI](https://github.com/portfolio-ltd/gravel/actions/workflows/ci.yml/badge.svg)](https://github.com/portfolio-ltd/gravel/actions/workflows/ci.yml)
 
 > _Screenshots coming soon — run the quick start below; the whole flow works
 > offline in simulated mode, no API key needed._

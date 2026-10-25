@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report vulnerabilities **privately** through GitHub's
-[security advisories](https://github.com/sagarchandagarwal/gravel/security/advisories/new)
+[security advisories](https://github.com/portfolio-ltd/gravel/security/advisories/new)
 ("Report a vulnerability"). Do not open a public issue.
 
 Include the affected version or commit, steps to reproduce, and the impact you

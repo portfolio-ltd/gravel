@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 
-export const GITHUB_URL = "https://github.com/sagarchandagarwal/gravel"
+export const GITHUB_URL = "https://github.com/portfolio-ltd/gravel"
 
 /** Gravel's mark: three stacked stones, drawn in the current accent. */
 export function LogoMark({ className }: { className?: string }) {
