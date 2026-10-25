@@ -1,0 +1,11 @@
+line-length = 120
+target-version = "py311"
+exclude = [".venv", "alembic/versions"]
+
+[lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+"tests/conftest.py" = ["E402"]      # env vars must be set before app import
+"routers/integrations.py" = ["E701"]  # aligned one-line field updates

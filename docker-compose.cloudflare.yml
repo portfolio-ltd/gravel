@@ -1,0 +1,17 @@
+# Cloudflare Tunnel override — exposes Gravel without opening router ports.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml up -d
+#
+# Needs CLOUDFLARE_TUNNEL_TOKEN in .env. Route the tunnel's public hostnames to
+# http://web:3000 and http://api:8000 in the Cloudflare dashboard.
+# See docs/deploy-raspberry-pi.md.
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:2025.8.0
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      - web
+      - api

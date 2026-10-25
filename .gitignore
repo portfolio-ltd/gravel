@@ -1,0 +1,49 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Dependencies & build output
+node_modules
+dist
+dist-ssr
+.next
+tsconfig.tsbuildinfo
+
+# Python
+.venv
+__pycache__/
+*.pyc
+.pytest_cache
+*.egg-info
+
+# Local data
+*.db
+apps/api/uploads/
+apps/api/gravel.db
+
+# Environment — never commit secrets
+.env
+.env.local
+*.local
+apps/web/.env.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+.claude/settings.local.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Third-party proprietary material — never commit
+ai-sdlc/
+
+# Vite cache
+.vite

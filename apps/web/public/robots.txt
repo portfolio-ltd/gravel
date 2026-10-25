@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /$
+Allow: /login
+Allow: /signup
+Disallow: /projects
+Disallow: /board
+Disallow: /engineers
+Disallow: /attention
+Disallow: /users
+Disallow: /settings
+Disallow: /integrations

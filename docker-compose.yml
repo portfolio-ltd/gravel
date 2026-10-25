@@ -1,0 +1,90 @@
+# ── Gravel — full local/production stack ─────────────────────────────────────
+# db (Postgres 16) + redis + api (FastAPI) + web (Next.js).
+# Engineer runtime containers are launched BY the api service via the mounted
+# Docker socket — they are not a compose service themselves.
+#
+# For a managed Postgres (e.g. Supabase) instead of the bundled db service:
+# set DATABASE_URL and DATABASE_SSL=require in .env and remove the db service.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gravel}
+      POSTGRES_USER: ${POSTGRES_USER:-gravel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gravel}
+    ports:
+      # Bound to localhost — the default credentials must never be reachable from outside
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gravel} -d ${POSTGRES_DB:-gravel}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    image: ${GRAVEL_API_IMAGE:-gravel-api:local}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+asyncpg://gravel:gravel@db:5432/gravel}
+      REDIS_URL: redis://redis:6379/0
+      UPLOAD_DIR: /app/uploads
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      RUNTIME_MODE: ${RUNTIME_MODE:-docker}
+      # Demo users (password demo1234) + sample projects — local evaluation only
+      SEED_DEMO: ${SEED_DEMO:-false}
+      RUNTIME_API_BASE_URL: http://api:8000
+      RUNTIME_DOCKER_NETWORK: gravel_default
+      RUNTIME_IMAGE_CONTEXT_PATH: /workspace/runtime
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:8000:8000"
+    volumes:
+      - uploads:/app/uploads
+      - ./apps/runtime:/workspace/runtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && if [ \"$${SEED_DEMO:-false}\" = true ]; then python seed.py; fi && uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2"
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    image: ${GRAVEL_WEB_IMAGE:-gravel-web:local}
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:3000:3000"
+    depends_on:
+      - api
+
+networks:
+  default:
+    name: gravel_default
+
+volumes:
+  postgres-data:
+  uploads:
