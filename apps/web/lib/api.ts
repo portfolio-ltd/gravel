@@ -53,7 +53,8 @@ export async function apiFetch<T = unknown>(
 
   const res = await fetch(`${BASE}${path}`, { ...init, headers })
 
-  if (res.status === 401 && retry) {
+  // A 401 without a token is a rejected credential (e.g. wrong password), not an expired session
+  if (res.status === 401 && retry && token) {
     const ok = await refreshOnce()
     if (ok) return apiFetch(path, init, false)
     clearTokens()

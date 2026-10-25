@@ -38,10 +38,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     try {
+      // No refresh-and-redirect on 401 here — show the server's reason instead
       const data = await apiFetch<TokenResponse>("/api/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
-      })
+      }, false)
       setTokens(data.access_token, data.refresh_token)
       const me = await apiFetch<User>("/api/auth/me")
       setUser(me)
@@ -53,10 +54,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signup = useCallback(async (name: string, email: string, password: string, role: string) => {
     try {
+      // No refresh-and-redirect on 401 here — show the server's reason instead
       const data = await apiFetch<TokenResponse>("/api/auth/signup", {
         method: "POST",
         body: JSON.stringify({ name, email, password, role }),
-      })
+      }, false)
       setTokens(data.access_token, data.refresh_token)
       const me = await apiFetch<User>("/api/auth/me")
       setUser(me)
