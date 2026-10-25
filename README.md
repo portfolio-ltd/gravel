@@ -174,6 +174,7 @@ you don't have Docker available for engineer runtimes.
 | `DEFAULT_MODEL` | `claude-opus-5-5` | Model used when a project/engineer doesn't name one |
 | `RUNTIME_MODE` | `docker` | `docker` launches engineer containers; `simulated` uses the in-process executor only |
 | `RUNTIME_IMAGE` | `gravel-engineer:latest` | Engineer runtime image |
+| `RUNTIME_EXECUTOR` | `opencode` | How runtimes work a stage: `opencode`, `claude-code` (Anthropic models only) or `llm` |
 | `SMTP_HOST` … | — | Email for verification and password reset (links are logged when unset) |
 | `SHOW_DOCS` | `true` | Serve `/docs` (turn off in production) |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | API origin baked into the web build |
@@ -195,7 +196,7 @@ Report vulnerabilities privately — see [SECURITY.md](SECURITY.md).
 - Jira and GitLab Issues sync
 - Two-way issue status sync and PR review comments
 - Per-stage model selection and budgets
-- Richer runtime executors (Claude Code, other agent CLIs)
+- More runtime executors (other agent CLIs)
 - Plugin points for custom stage roles
 
 ## Contributing

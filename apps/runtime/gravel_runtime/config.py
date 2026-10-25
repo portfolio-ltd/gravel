@@ -11,8 +11,10 @@ class RuntimeConfig(BaseSettings):
     poll_interval_seconds: int = 15
     heartbeat_interval_seconds: int = 60
     workspace_dir: str = "/tmp/gravel-runtime"
-    executor: str = "opencode"  # "opencode" (agentic CLI) or "llm" (single API call)
+    executor: str = "opencode"  # "opencode" or "claude-code" (agentic CLIs), or "llm" (single API call)
     opencode_command: str = "opencode"
+    claude_command: str = "claude"
+    claude_max_turns: int = 0  # 0 = no turn limit (the 60-minute timeout still applies)
     github_token: str = ""
     dry_run: bool = False
 

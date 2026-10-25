@@ -1,10 +1,11 @@
-"""Task execution: opencode CLI (agentic, edits the repo) or a direct LLM call.
+"""Task execution: opencode or Claude Code CLI (agentic, edits the repo) or a direct LLM call.
 
-Both paths end in the same result dict (see .gravel/OUTPUT_CONTRACT.md):
+All paths end in the same result dict (see .gravel/OUTPUT_CONTRACT.md):
 outcome_type, summary, blocking_reason, plus optional structured stage
 results — documents, acceptance criteria, questions, knowledge, verdict.
 """
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -95,6 +96,51 @@ def run_opencode(workspace: Path) -> dict:
     return collect_outputs(workspace, parsed or {"outcome_type": "failed", "summary": ""})
 
 
+def run_claude_code(workspace: Path) -> dict:
+    if config.dry_run:
+        return {"outcome_type": "needs_human_input", "summary": "Dry run — no work executed.",
+                "blocking_reason": "Runtime launched with GRAVEL_DRY_RUN=true"}
+    if config.model_provider != "anthropic":
+        return _failed(f"Claude Code needs an Anthropic model, not provider '{config.model_provider}'.")
+    cmd = [
+        config.claude_command, "-p", SYSTEM_INSTRUCTIONS,
+        "--output-format", "json",
+        "--model", config.model_name,
+        "--dangerously-skip-permissions",
+    ]
+    if config.claude_max_turns > 0:
+        cmd += ["--max-turns", str(config.claude_max_turns)]
+    # The container runs as root, where Claude Code only skips permission
+    # prompts once told it is inside a sandbox
+    env = {**os.environ, "IS_SANDBOX": "1"}
+    try:
+        result = subprocess.run(cmd, cwd=str(workspace), capture_output=True, text=True, timeout=3600, env=env)
+    except subprocess.TimeoutExpired:
+        return _failed("Claude Code timed out after 60 minutes.")
+    except FileNotFoundError:
+        return _failed(f"Claude Code binary '{config.claude_command}' not found in runtime image.")
+    # --output-format json wraps the final message in a result envelope with usage
+    try:
+        envelope = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        envelope = None
+    if not isinstance(envelope, dict):
+        envelope = {"result": result.stdout}
+    text = envelope.get("result") or ""
+    if result.returncode != 0 or envelope.get("is_error"):
+        return _failed(f"Claude Code exited {result.returncode}", result.stderr or text or result.stdout or "")
+    parsed = _parse(text)
+    if parsed is None and not (workspace / ".gravel" / "output" / "result.json").exists():
+        return _failed("Executor produced no parseable result.", text or "no output")
+    outcome = collect_outputs(workspace, parsed or {"outcome_type": "failed", "summary": ""})
+    usage = envelope.get("usage") or {}
+    tokens_in = sum(usage.get(key) or 0 for key in
+                    ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+    outcome.setdefault("tokens_in", tokens_in)
+    outcome.setdefault("tokens_out", usage.get("output_tokens") or 0)
+    return outcome
+
+
 def _bundle_text(workspace: Path) -> str:
     base = workspace / ".gravel"
     parts = []
@@ -146,4 +192,6 @@ def run_llm(workspace: Path) -> dict:
 def execute(workspace: Path) -> dict:
     if config.executor == "llm":
         return run_llm(workspace)
+    if config.executor == "claude-code":
+        return run_claude_code(workspace)
     return run_opencode(workspace)

@@ -6,8 +6,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Agentic executor + deployment tooling
-RUN npm install -g opencode-ai && pip install --no-cache-dir awscli
+# Agentic executors + deployment tooling. The Claude Code npm package picks
+# its native binary per platform, so amd64 and arm64 builds both work.
+ARG CLAUDE_CODE_VERSION=2.1.308
+RUN npm install -g opencode-ai "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+    && pip install --no-cache-dir awscli
 
 WORKDIR /app
 COPY pyproject.toml ./

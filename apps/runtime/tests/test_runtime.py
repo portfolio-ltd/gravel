@@ -86,3 +86,93 @@ def test_parse_accepts_current_and_legacy_keys():
     assert executor._parse('{"outcome_type": "completed", "summary": "s"}')["outcome_type"] == "completed"
     assert executor._parse('{"outcome": "bogus"}') is None
     assert executor._parse("no json") is None
+
+
+def _claude_envelope(result: str, *, is_error: bool = False) -> str:
+    return json.dumps({"type": "result", "subtype": "success", "is_error": is_error, "result": result,
+                       "usage": {"input_tokens": 10, "cache_creation_input_tokens": 100,
+                                 "cache_read_input_tokens": 1000, "output_tokens": 50}})
+
+
+@pytest.fixture
+def claude_code(monkeypatch):
+    """Select the Claude Code executor and capture the subprocess call."""
+    monkeypatch.setattr(config, "executor", "claude-code")
+    monkeypatch.setattr(config, "model_provider", "anthropic")
+    monkeypatch.setattr(config, "model_name", "claude-opus-5-5")
+    monkeypatch.setattr(config, "claude_max_turns", 0)
+    monkeypatch.setattr(config, "dry_run", False)
+    calls = {"stdout": "", "returncode": 0}
+
+    def fake_run(cmd, **kwargs):
+        calls.update(cmd=cmd, kwargs=kwargs)
+        if calls.get("side_effect"):
+            raise calls["side_effect"]
+        return subprocess.CompletedProcess(cmd, calls["returncode"], calls["stdout"], "boom")
+
+    monkeypatch.setattr(executor.subprocess, "run", fake_run)
+    return calls
+
+
+def test_execute_selects_executor(monkeypatch, tmp_path: Path):
+    for name in ("run_opencode", "run_claude_code", "run_llm"):
+        monkeypatch.setattr(executor, name, lambda _ws, name=name: {"ran": name})
+    for selected, expected in (("opencode", "run_opencode"), ("claude-code", "run_claude_code"), ("llm", "run_llm")):
+        monkeypatch.setattr(config, "executor", selected)
+        assert executor.execute(tmp_path) == {"ran": expected}
+
+
+def test_claude_code_command(claude_code, monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(config, "claude_max_turns", 40)
+    claude_code["stdout"] = _claude_envelope('{"outcome": "completed", "summary": "s"}')
+    executor.run_claude_code(tmp_path)
+    cmd = claude_code["cmd"]
+    assert cmd[:3] == ["claude", "-p", executor.SYSTEM_INSTRUCTIONS]
+    assert cmd[cmd.index("--output-format") + 1] == "json"
+    assert cmd[cmd.index("--model") + 1] == "claude-opus-5-5"
+    assert "--dangerously-skip-permissions" in cmd and cmd[cmd.index("--max-turns") + 1] == "40"
+    assert claude_code["kwargs"]["cwd"] == str(tmp_path) and claude_code["kwargs"]["env"]["IS_SANDBOX"] == "1"
+
+
+def test_claude_code_result_matches_contract(claude_code, tmp_path: Path):
+    out = tmp_path / ".gravel" / "output"
+    out.mkdir(parents=True)
+    (out / "plan.md").write_text("# Plan")
+    claude_code["stdout"] = _claude_envelope(
+        'Done.\n{"outcome": "completed", "summary": "Planned", "acceptance_criteria": ["works"]}')
+    result = executor.run_claude_code(tmp_path)
+    assert "--max-turns" not in claude_code["cmd"]
+    assert result["outcome_type"] == "completed" and result["summary"] == "Planned"
+    assert result["acceptance_criteria"] == ["works"]
+    assert result["documents"] == [{"kind": "plan", "title": "Plan", "body": "# Plan"}]
+    assert (result["tokens_in"], result["tokens_out"]) == (1110, 50)
+
+
+def test_claude_code_result_file_without_final_json(claude_code, tmp_path: Path):
+    out = tmp_path / ".gravel" / "output"
+    out.mkdir(parents=True)
+    (out / "result.json").write_text(json.dumps({"outcome": "blocked", "summary": "s", "blocking_reason": "r"}))
+    claude_code["stdout"] = _claude_envelope("I wrote the result file.")
+    result = executor.run_claude_code(tmp_path)
+    assert result["outcome_type"] == "blocked" and result["blocking_reason"] == "r"
+
+
+def test_claude_code_failures(claude_code, monkeypatch, tmp_path: Path):
+    claude_code["stdout"] = _claude_envelope("no json here")
+    assert executor.run_claude_code(tmp_path)["summary"] == "Executor produced no parseable result."
+
+    claude_code["stdout"] = _claude_envelope("API error", is_error=True)
+    claude_code["returncode"] = 1
+    result = executor.run_claude_code(tmp_path)
+    assert result["outcome_type"] == "failed" and result["summary"] == "Claude Code exited 1"
+
+    claude_code["side_effect"] = FileNotFoundError()
+    result = executor.run_claude_code(tmp_path)
+    assert result["outcome_type"] == "failed" and "not found in runtime image" in result["summary"]
+
+    claude_code["side_effect"] = subprocess.TimeoutExpired("claude", 3600)
+    assert executor.run_claude_code(tmp_path)["summary"] == "Claude Code timed out after 60 minutes."
+
+    monkeypatch.setattr(config, "model_provider", "openai")
+    claude_code.pop("cmd")
+    assert executor.run_claude_code(tmp_path)["outcome_type"] == "failed" and "cmd" not in claude_code
