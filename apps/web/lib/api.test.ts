@@ -30,4 +30,24 @@ describe("apiFetch", () => {
     await expect(apiFetch("/api/forbidden")).rejects.toMatchObject({ status: 403, detail: "Nope" })
     await expect(apiFetch("/api/forbidden")).rejects.toBeInstanceOf(ApiError)
   })
+
+  it("surfaces the server detail on a 401 when no token was sent", async () => {
+    clearTokens()
+    const mock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Invalid email or password." }), { status: 401, headers: { "content-type": "application/json" } })
+    )
+    global.fetch = mock as unknown as typeof fetch
+    await expect(apiFetch("/api/auth/login", { method: "POST" })).rejects.toMatchObject({ status: 401, detail: "Invalid email or password." })
+    // No refresh attempt — only the original request went out
+    expect(mock).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not refresh a 401 when retry is disabled", async () => {
+    const mock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Invalid email or password." }), { status: 401, headers: { "content-type": "application/json" } })
+    )
+    global.fetch = mock as unknown as typeof fetch
+    await expect(apiFetch("/api/auth/login", { method: "POST" }, false)).rejects.toMatchObject({ status: 401, detail: "Invalid email or password." })
+    expect(mock).toHaveBeenCalledTimes(1)
+  })
 })
