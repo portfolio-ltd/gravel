@@ -59,5 +59,10 @@ class WorkflowStage(BaseModel):
     # stage_order. Together with rework_target_stage_id (the failure edge) this
     # makes a workflow a graph that can branch and loop.
     next_stage_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # Agent harness for this stage's runs; None → the org default, then the
+    # built-in harness for the stage's role (services/harness.py)
+    harness_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("agent_harnesses.id", ondelete="SET NULL"), nullable=True
+    )
 
     workflow: Mapped["Workflow"] = relationship("Workflow", back_populates="stages")

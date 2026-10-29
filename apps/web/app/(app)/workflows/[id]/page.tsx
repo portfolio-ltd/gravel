@@ -7,6 +7,7 @@ import {
   useWorkflow, useUpdateWorkflow, useAddStage, useUpdateStage, useDeleteStage, useReorderStages,
 } from "@/hooks/useWorkflows"
 import { useEngineers } from "@/hooks/useEngineers"
+import { useHarnesses } from "@/hooks/useHarnesses"
 import { useMeta } from "@/hooks/useSdlc"
 import { Button } from "@/components/ui/button"
 import { Field, Input, Select, Switch, Textarea } from "@/components/ui/form"
@@ -75,6 +76,7 @@ function StageCard({
   models: ModelOption[]
 }) {
   const { data: engineers } = useEngineers()
+  const { data: harnesses } = useHarnesses()
   const updateStage = useUpdateStage()
   const deleteStage = useDeleteStage()
   const reorder = useReorderStages()
@@ -220,6 +222,21 @@ function StageCard({
           </Select>
         </Field>
       </div>
+
+      <Field label="Harness" className="mb-4"
+        hint={stage.harness_id
+          ? "Pinned: this stage's runs use this harness's subagents, routing, gate and limits."
+          : (harnesses ?? []).some((h) => h.is_default) ? `Inherits the organization default — ${(harnesses ?? []).find((h) => h.is_default)?.name}.` : "Inherits Gravel's built-in harness for the role."}>
+        <Select
+          value={stage.harness_id ?? ""}
+          onChange={(e) => patch({ harness_id: e.target.value || null })}
+          disabled={!stage.is_ai_executable}
+          aria-label="Stage harness"
+        >
+          <option value="">Inherit — organization default or built-in</option>
+          {(harnesses ?? []).map((h) => <option key={h.id} value={h.id}>{h.name}{h.roles.length && !h.roles.includes(stage.role) ? ` (meant for ${h.roles.join(", ")})` : ""}</option>)}
+        </Select>
+      </Field>
 
       <Field label="On success, go to" className="mb-2"
         hint={stage.next_stage_id ? "Skips the order above; an edge back to an earlier stage makes a loop (the stop rule parks it after 10 visits)." : undefined}>

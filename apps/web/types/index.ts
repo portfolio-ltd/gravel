@@ -222,6 +222,7 @@ export interface TaskRun {
   phase: TaskRunPhase
   workflow_stage_id: string | null
   attempt_number: number
+  harness_id?: string | null
   outcome: TaskRunOutcome | null
   blocking_reason: string | null
   summary: string | null
@@ -391,6 +392,8 @@ export interface WorkflowStage {
   rework_target_stage_id: string | null
   /** Success edge; null = the next stage by order */
   next_stage_id: string | null
+  /** Agent harness for this stage's runs; null = the org default, then the built-in one */
+  harness_id: string | null
   created_at: string
   updated_at: string
 }
@@ -419,6 +422,7 @@ export interface WorkflowStageCreate {
   max_rework_attempts?: number
   rework_target_stage_id?: string | null
   next_stage_id?: string | null
+  harness_id?: string | null
 }
 
 export interface WorkflowCreate {
@@ -432,7 +436,7 @@ export interface WorkflowCreate {
 export type StageRoleKey = "analyze" | "refine" | "plan" | "build" | "review" | "verify" | "deploy" | "custom"
 export type DocumentKind = "analysis" | "spec" | "plan" | "scenarios" | "review" | "verification" | "notes"
 export type QuestionStatus = "open" | "answered" | "deferred" | "dismissed"
-export type KnowledgeKind = "decision" | "pattern" | "glossary" | "runbook" | "convention"
+export type KnowledgeKind = "decision" | "pattern" | "glossary" | "runbook" | "convention" | "wiki"
 export type KnowledgeStatus = "proposed" | "accepted" | "deprecated" | "rejected"
 
 export interface AcceptanceCriterion {
@@ -480,11 +484,142 @@ export interface KnowledgeEntry {
   status: KnowledgeStatus
   number: number | null
   label: string
+  /** URL-safe name unique per org: what [[wikilinks]] and the Obsidian export use */
+  slug: string | null
+  /** Wiki hierarchy: the entry this one sits under */
+  parent_id: string | null
   author_type: CommentAuthorType
   created_by_id: string | null
   source_task_id: string | null
   created_at: string
   updated_at: string
+}
+
+export interface KnowledgeRef {
+  id: string
+  title: string
+  kind: KnowledgeKind
+  status: KnowledgeStatus
+  slug: string | null
+  label: string
+}
+
+export interface KnowledgeLinks {
+  outgoing: KnowledgeRef[]
+  backlinks: KnowledgeRef[]
+  children: KnowledgeRef[]
+  unresolved: string[]
+}
+
+export interface KnowledgeImportResult {
+  created: number
+  updated: number
+  skipped: number
+  titles: string[]
+}
+
+// ── Knowledge map ────────────────────────────────────────────────────────────
+
+export type MapNodeType = "knowledge" | "task" | "prd" | "project" | "link" | "module"
+export type MapEdgeType = "wikilink" | "mentions" | "proposed" | "parent" | "scope" | "depends" | "link" | "import"
+
+export interface MapNode {
+  id: string
+  type: MapNodeType
+  label: string
+  href?: string
+  kind?: string
+  status?: string
+  slug?: string | null
+  project_id?: string | null
+  url?: string
+  purpose?: string
+  degree: number
+}
+
+export interface MapEdge {
+  source: string
+  target: string
+  type: MapEdgeType
+}
+
+export interface KnowledgeMap {
+  nodes: MapNode[]
+  edges: MapEdge[]
+  unresolved: { source: string; targets: string[] }[]
+  counts: Record<MapNodeType, number>
+}
+
+// ── External links ───────────────────────────────────────────────────────────
+
+export type LinkEntityType = "project" | "task" | "prd" | "knowledge"
+export type LinkKind = "docs" | "design" | "ticket" | "dashboard" | "repo" | "spec" | "other"
+
+export interface ExternalLinkItem {
+  id: string
+  organization_id: string
+  entity_type: LinkEntityType
+  entity_id: string
+  url: string
+  title: string
+  kind: LinkKind
+  description: string | null
+  created_by_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+// ── Agent harnesses ──────────────────────────────────────────────────────────
+
+export type HarnessExecutor = "any" | "claude-code" | "opencode" | "llm"
+
+export interface HarnessAgent {
+  description: string
+  prompt: string
+  tools?: string[] | null
+  model?: string | null
+  /** Stage roles this subagent is offered to (empty = every role) */
+  roles?: string[] | null
+}
+
+export interface AgentHarness {
+  id: string
+  organization_id: string
+  owner_id: string | null
+  name: string
+  description: string | null
+  template_key: string | null
+  executor: HarnessExecutor
+  roles: string[]
+  agents: Record<string, HarnessAgent>
+  routing: Record<string, string>
+  instructions_markdown: string | null
+  test_gate: boolean
+  max_review_rounds: number
+  max_turns: number
+  allowed_tools: string[] | null
+  disallowed_tools: string[] | null
+  is_default: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type HarnessInput = Omit<AgentHarness, "id" | "organization_id" | "owner_id" | "template_key" | "created_at" | "updated_at">
+
+export interface HarnessTemplate {
+  key: string
+  name: string
+  description: string
+  executor: HarnessExecutor
+  roles: string[]
+  agents: string[]
+  test_gate: boolean
+  max_turns: number
+}
+
+export interface HarnessPreview {
+  role: string
+  files: Record<string, string>
 }
 
 export interface ModelOption {

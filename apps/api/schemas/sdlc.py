@@ -68,6 +68,8 @@ class KnowledgeOut(BaseModel):
     status: KnowledgeStatus
     number: int | None
     label: str
+    slug: str | None = None
+    parent_id: str | None = None
     author_type: CommentAuthorType
     created_by_id: str | None
     source_task_id: str | None
@@ -81,6 +83,8 @@ class KnowledgeIn(BaseModel):
     body_markdown: str = ""
     project_id: str | None = None
     status: KnowledgeStatus = KnowledgeStatus.accepted
+    slug: str | None = Field(None, max_length=200)
+    parent_id: str | None = None
 
 
 class KnowledgeUpdate(BaseModel):
@@ -88,6 +92,32 @@ class KnowledgeUpdate(BaseModel):
     body_markdown: str | None = None
     status: KnowledgeStatus | None = None
     project_id: str | None = None
+    slug: str | None = Field(None, max_length=200)
+    parent_id: str | None = None
+
+
+class KnowledgeRef(BaseModel):
+    """A linked entry, enough to render a chip."""
+    id: str
+    title: str
+    kind: KnowledgeKind
+    status: KnowledgeStatus
+    slug: str | None
+    label: str
+
+
+class KnowledgeLinksOut(BaseModel):
+    outgoing: list[KnowledgeRef]
+    backlinks: list[KnowledgeRef]
+    children: list[KnowledgeRef]
+    unresolved: list[str]
+
+
+class KnowledgeImportOut(BaseModel):
+    created: int
+    updated: int
+    skipped: int
+    titles: list[str]
 
 
 class IssueImportIn(BaseModel):

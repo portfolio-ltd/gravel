@@ -1,6 +1,6 @@
 import {
   BookOpen, Bot, Building2, FileText, FolderKanban, GitBranch, Inbox, Kanban, LayoutDashboard, Plug,
-  Settings, Users, type LucideIcon,
+  Settings, Users, Waypoints, Wrench, type LucideIcon,
 } from "lucide-react"
 
 export interface NavItem {
@@ -32,7 +32,8 @@ export const NAV: NavGroup[] = [
     label: "Plan",
     items: [
       { href: "/prds", label: "PRDs", icon: FileText, keywords: "requirements product spec" },
-      { href: "/knowledge", label: "Knowledge", icon: BookOpen, keywords: "decisions adr patterns glossary runbooks conventions" },
+      { href: "/knowledge", label: "Knowledge", icon: BookOpen, keywords: "decisions adr patterns glossary runbooks conventions wiki" },
+      { href: "/map", label: "Map", icon: Waypoints, keywords: "graph knowledge map wikilinks backlinks obsidian" },
     ],
   },
   {
@@ -40,6 +41,7 @@ export const NAV: NavGroup[] = [
     items: [
       { href: "/workflows", label: "Workflows", icon: GitBranch, keywords: "stages pipeline templates roles" },
       { href: "/engineers", label: "Engineers", icon: Bot, keywords: "agents runtimes containers" },
+      { href: "/harnesses", label: "Harnesses", icon: Wrench, keywords: "subagents routing test gate tools turns agent harness" },
       { href: "/integrations", label: "Integrations", icon: Plug, keywords: "github gitlab deploy aws" },
     ],
   },

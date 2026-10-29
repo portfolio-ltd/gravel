@@ -6,6 +6,7 @@ import { Kanban, Loader2 } from "lucide-react"
 import { useBoard, useAttentionTasks } from "@/hooks/useBoard"
 import { useProjects } from "@/hooks/useProjects"
 import { useTags } from "@/hooks/useTags"
+import { useProjectSocket } from "@/hooks/useProjectSocket"
 import KanbanBoard from "@/components/KanbanBoard"
 import BoardCustomize from "@/components/sdlc/BoardCustomize"
 import { PageHeader } from "@/components/ui/page"
@@ -34,6 +35,9 @@ function Board() {
   }
   const [tagFilter, setTagFilter] = useState<string>("")
   const { data: board, isLoading } = useBoard(selectedProjectId || undefined)
+  // Live updates: stage changes, gate outcomes and new documents refresh the
+  // board and any open task panel without waiting for the next poll
+  useProjectSocket(selectedProjectId || null)
   const { data: attentionTasks } = useAttentionTasks()
   const { data: projects } = useProjects()
   const { data: tags } = useTags()

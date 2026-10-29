@@ -21,6 +21,7 @@ import CreateProjectDialog from "@/components/CreateProjectDialog"
 import { Pipeline, stagesFromWorkflow } from "@/components/workflow/Pipeline"
 import CodeGraphPanel from "@/components/graph/CodeGraphPanel"
 import TaskGraph from "@/components/graph/TaskGraph"
+import LinksPanel from "@/components/LinksPanel"
 import { useProjects, useProject, useDeleteProject, useAdvanceProject, useUpdateProject } from "@/hooks/useProjects"
 import { useWorkflows } from "@/hooks/useWorkflows"
 import { useTasks, useUpdateTask, useDeleteTask, useCreateTask } from "@/hooks/useTasks"
@@ -509,6 +510,9 @@ function ProjectDetail({ projectId }: { projectId: string }) {
         <TabsContent value="sources" className="space-y-4">
           <PrdCard project={project} />
           <GithubIssuesCard project={project} />
+          <SectionCard title="External links" description="Designs, dashboards, specs and tickets for this project. Every engineer run receives them as LINKS.md, and they appear on the knowledge map.">
+            <LinksPanel entityType="project" entityId={project.id} title="" />
+          </SectionCard>
         </TabsContent>
 
         <TabsContent value="changelog">

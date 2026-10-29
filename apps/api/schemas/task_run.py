@@ -12,6 +12,7 @@ class TaskRunOut(BaseModel):
     phase: TaskRunPhase
     workflow_stage_id: str | None = None
     attempt_number: int = 1
+    harness_id: str | None = None
     outcome: TaskRunOutcome | None
     blocking_reason: str | None
     summary: str | None = None

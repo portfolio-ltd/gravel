@@ -3,7 +3,7 @@ criteria, the knowledge base, and GitHub issue import."""
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from config import settings
@@ -183,9 +183,27 @@ def _knowledge_out(e: KnowledgeEntry) -> KnowledgeOut:
     return KnowledgeOut(
         id=e.id, organization_id=e.organization_id, project_id=e.project_id, kind=e.kind, title=e.title,
         body_markdown=e.body_markdown, status=e.status, number=e.number, label=sdlc.knowledge_label(e),
+        slug=e.slug, parent_id=e.parent_id,
         author_type=e.author_type, created_by_id=e.created_by_id, source_task_id=e.source_task_id,
         created_at=e.created_at, updated_at=e.updated_at,
     )
+
+
+async def _check_parent(db, parent_id: str | None, org, entry_id: str | None) -> None:
+    if not parent_id:
+        return
+    if entry_id and parent_id == entry_id:
+        raise HTTPException(400, "An entry cannot be its own parent")
+    parent = await db.get(KnowledgeEntry, parent_id)
+    if not parent or parent.organization_id != org.id:
+        raise HTTPException(400, "Parent entry not found in this organization")
+    # No cycles: walk up from the parent
+    seen, current = set(), parent
+    while current is not None and current.parent_id:
+        if current.parent_id == entry_id or current.parent_id in seen:
+            raise HTTPException(400, "That parent would create a cycle")
+        seen.add(current.id)
+        current = await db.get(KnowledgeEntry, current.parent_id)
 
 
 async def _check_project(db, project_id: str | None, org) -> None:
@@ -193,14 +211,6 @@ async def _check_project(db, project_id: str | None, org) -> None:
         p = await db.get(Project, project_id)
         if not p or p.organization_id != org.id:
             raise HTTPException(400, "Project not found in this organization")
-
-
-async def _assign_decision_number(db, entry: KnowledgeEntry) -> None:
-    if entry.kind == KnowledgeKind.decision and entry.number is None and entry.status == KnowledgeStatus.accepted:
-        current = (await db.execute(select(func.max(KnowledgeEntry.number)).where(
-            KnowledgeEntry.organization_id == entry.organization_id, KnowledgeEntry.kind == KnowledgeKind.decision,
-        ))).scalar_one()
-        entry.number = (current or 0) + 1
 
 
 @router.get("/knowledge", response_model=list[KnowledgeOut])
@@ -220,12 +230,15 @@ async def list_knowledge(current_user: CurrentUser, org: CurrentOrg, db: DB, kin
 @router.post("/knowledge", response_model=KnowledgeOut, status_code=201)
 async def create_knowledge(body: KnowledgeIn, current_user: CurrentUser, org: CurrentOrg, db: DB):
     await _check_project(db, body.project_id, org)
+    await _check_parent(db, body.parent_id, org, None)
+    from services.knowledge_graph import unique_slug
     entry = KnowledgeEntry(
         id=new_uuid(), organization_id=org.id, project_id=body.project_id, kind=body.kind, title=body.title.strip(),
         body_markdown=body.body_markdown, status=body.status, author_type=CommentAuthorType.human,
-        created_by_id=current_user.id,
+        created_by_id=current_user.id, parent_id=body.parent_id,
+        slug=await unique_slug(db, org.id, body.title.strip(), wanted=body.slug),
     )
-    await _assign_decision_number(db, entry)
+    await sdlc.assign_decision_number(db, entry)
     db.add(entry)
     await db.flush()
     return _knowledge_out(entry)
@@ -244,10 +257,18 @@ async def update_knowledge(entry_id: str, body: KnowledgeUpdate, current_user: C
     fields = body.model_dump(exclude_unset=True)
     if "project_id" in fields:
         await _check_project(db, fields["project_id"], org)
+    if "parent_id" in fields:
+        await _check_parent(db, fields["parent_id"], org, entry.id)
+    if fields.get("slug"):
+        from services.knowledge_graph import unique_slug
+        fields["slug"] = await unique_slug(db, org.id, entry.title, exclude_id=entry.id, wanted=fields["slug"])
     for key, value in fields.items():
-        if value is not None or key == "project_id":
+        if value is not None or key in ("project_id", "parent_id"):
             setattr(entry, key, value)
-    await _assign_decision_number(db, entry)
+    if not entry.slug:
+        from services.knowledge_graph import unique_slug
+        entry.slug = await unique_slug(db, org.id, entry.title, exclude_id=entry.id)
+    await sdlc.assign_decision_number(db, entry)
     await db.flush()
     return _knowledge_out(entry)
 

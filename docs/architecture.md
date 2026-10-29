@@ -21,6 +21,10 @@ apps/api/
     agent.py         in-process executor (LLM or simulated) + drain loop
     llm.py           provider-neutral LLM calls (Anthropic / OpenAI / Groq)
     issues.py        GitHub Issues import and comment-back
+    harness.py       agent harnesses: templates, resolution (stage → org default → built-in)
+    subagents.py     the built-in harness and the .gravel/ files that render any harness
+    knowledge_graph  wikilinks, slugs, the map, Obsidian export / markdown import
+    code_graph.py    repository mapping (modules, imports, stack, commands)
     runtime_manager  launches/stops engineer containers
     token_usage.py   usage ledger and price map
   alembic/versions/  migrations (run `alembic upgrade head`)
@@ -32,8 +36,11 @@ apps/api/
 - **Project** — repo, default model, optional **Workflow**, optional GitHub
   `issues_repo`.
 - **Workflow** → ordered **WorkflowStage**s (role, approval gate, open-question
-  gate, AI/manual, rework target, attempt budget, assigned engineer, optional
-  model — runs resolve stage → engineer → project → `DEFAULT_MODEL`).
+  gate, AI/manual, rework target, success edge, attempt budget, assigned
+  engineer, optional model — runs resolve stage → engineer → project →
+  `DEFAULT_MODEL` — and optional **harness**).
+- **AgentHarness** — org-scoped: subagents, routing per role, test gate, review
+  rounds, turn and tool limits, extra instructions; one may be the default.
 - **Task** — status, priority, type, `acceptance_criteria` (JSON checklist with
   human/ai source), current stage, branch/PR/deploy links, external issue link.
 - **TaskRun** — one execution of a stage/phase: outcome, summary, gate state,
@@ -44,7 +51,11 @@ apps/api/
 - **OpenQuestion** — question, owner, status (open/answered/deferred/dismissed),
   blocking flag, answer.
 - **KnowledgeEntry** — org- or project-scoped decision / pattern / glossary /
-  runbook / convention with status proposed → accepted (decisions get numbers).
+  runbook / convention / wiki page with status proposed → accepted (decisions
+  get numbers), a unique **slug** for `[[wikilinks]]`, and an optional parent.
+- **ExternalLink** — a URL (docs, design, ticket, dashboard, repo, spec) attached
+  to a project, task, PRD or knowledge entry.
+- **CodeGraph** — one per project: modules, import edges, stack, commands.
 - **Engineer** → **EngineerRuntime** (container, token hash, heartbeat, claim).
 - **PRD**, **Tag**, **TokenUsage**, **ChangelogEntry**, integrations.
 

@@ -6,12 +6,17 @@ small graph of its own. The bundle carries:
   .gravel/claude/agents.json   — subagent definitions for the stage's role,
                                  passed to `claude --agents`
   .gravel/SUBAGENTS.md         — how to route work between them
+  .gravel/HARNESS.md           — which harness wrapped the run and its limits
+  .gravel/harness.json         — the executor settings the runtime applies
+                                 (turn limit, allowed / disallowed tools)
   .gravel/claude/settings.json — a Stop hook (`claude --settings`) that runs the
   .gravel/claude/test_gate.*     project's test commands once before a
                                  code-writing run may finish
 
-Everything lives under .gravel/, which the runtime keeps out of git, so the
-user's repository is never touched. Other executors ignore these files.
+The defaults below are the built-in harness; an organization's own harnesses
+(services/harness.py) replace any part of them. Everything lives under
+.gravel/, which the runtime keeps out of git, so the user's repository is
+never touched. Executors ignore the files they cannot use.
 """
 import json
 
@@ -134,22 +139,46 @@ def role_for(stage_role: str | None, phase: str | None) -> str:
     return PHASE_ROLES.get(phase or "", "custom")
 
 
-def bundle_files(role: str, graph: dict | None) -> dict[str, str]:
-    """The .gravel/ files that turn one run into a small graph (see module docstring)."""
-    names = ROLE_AGENTS.get(role, ROLE_AGENTS["custom"])
+def bundle_files(role: str, graph: dict | None, harness=None) -> dict[str, str]:
+    """The .gravel/ files that turn one run into a small graph (see module docstring).
+
+    `harness` is an AgentHarness (or None for the built-in one); its resolved
+    HarnessConfig decides the subagents, routing, gate and executor limits.
+    """
+    from services.harness import config_for
+    cfg = config_for(harness, role)
     files: dict[str, str] = {}
-    if names:
-        files["claude/agents.json"] = json.dumps({n: AGENTS[n] for n in names}, indent=2)
-        routing = ROUTING.get(role) or "Delegate to these subagents where it helps; do the rest yourself."
+    if cfg.agents:
+        files["claude/agents.json"] = json.dumps(cfg.agents, indent=2)
+        routing = cfg.routing
+        if cfg.max_review_rounds and any("review" in n for n in cfg.agents) and "Stop rule" not in routing:
+            routing += (f"\nStop rule: at most {cfg.max_review_rounds} review round"
+                        f"{'s' if cfg.max_review_rounds != 1 else ''} — then report the remaining findings "
+                        "as needs_human_input.")
         files["SUBAGENTS.md"] = (
             "# Subagents\n\nThis run can delegate to subagents, each with its own fresh context:\n\n"
-            + "\n".join(f"- `{n}` — {AGENTS[n]['description']}" for n in names)
+            + "\n".join(f"- `{n}` — {a['description']}" for n, a in cfg.agents.items())
             + f"\n\n## How to route the work\n\n{routing}\n\n"
             "You stay responsible for the result: merge what they return, and report through "
             ".gravel/OUTPUT_CONTRACT.md as usual.\n"
         )
+    limits = []
+    if cfg.max_turns:
+        limits.append(f"- Turn limit: {cfg.max_turns}")
+    if cfg.allowed_tools:
+        limits.append(f"- Allowed tools: {', '.join(cfg.allowed_tools)}")
+    if cfg.disallowed_tools:
+        limits.append(f"- Disallowed tools: {', '.join(cfg.disallowed_tools)}")
+    limits.append(f"- Test gate: {'on' if cfg.test_gate else 'off'}")
+    files["HARNESS.md"] = (
+        f"# Harness: {cfg.name}\n\n" + (f"{cfg.description}\n\n" if cfg.description else "")
+        + f"Subagents: {', '.join(f'`{n}`' for n in cfg.agents) or 'none'}\n\n"
+        + "\n".join(limits) + "\n"
+        + (f"\n## Extra instructions\n\n{cfg.instructions}\n" if cfg.instructions else "")
+    )
+    files["harness.json"] = json.dumps(cfg.executor_settings(), indent=2)
     commands = gate_commands(graph)[:4]
-    if role in GATED_ROLES and commands:
+    if cfg.test_gate and role in GATED_ROLES and commands:
         files["claude/test_gate.json"] = json.dumps(
             [{"cwd": c["cwd"], "run": c["run"]} for c in commands], indent=2)
         files["claude/test_gate.py"] = GATE_SCRIPT

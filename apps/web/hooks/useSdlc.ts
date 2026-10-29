@@ -122,18 +122,27 @@ export function useKnowledge(filters: { kind?: KnowledgeKind; status?: Knowledge
 export function useCreateKnowledge() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (entry: { kind: KnowledgeKind; title: string; body_markdown: string; project_id?: string | null; status?: KnowledgeStatus }) =>
+    mutationFn: (entry: { kind: KnowledgeKind; title: string; body_markdown: string; project_id?: string | null; status?: KnowledgeStatus; parent_id?: string | null; slug?: string | null }) =>
       apiFetch<KnowledgeEntry>("/api/knowledge", { method: "POST", body: JSON.stringify(entry) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["knowledge"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["knowledge"] })
+      qc.invalidateQueries({ queryKey: ["knowledge-map"] })
+      qc.invalidateQueries({ queryKey: ["knowledge-links"] })
+    },
   })
 }
 
 export function useUpdateKnowledge() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...patch }: { id: string; title?: string; body_markdown?: string; status?: KnowledgeStatus; project_id?: string | null }) =>
+    mutationFn: ({ id, ...patch }: { id: string; title?: string; body_markdown?: string; status?: KnowledgeStatus; project_id?: string | null; parent_id?: string | null; slug?: string | null }) =>
       apiFetch<KnowledgeEntry>(`/api/knowledge/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["knowledge"] }),
+    onSuccess: (entry) => {
+      qc.invalidateQueries({ queryKey: ["knowledge"] })
+      qc.invalidateQueries({ queryKey: ["knowledge-entry", entry.id] })
+      qc.invalidateQueries({ queryKey: ["knowledge-map"] })
+      qc.invalidateQueries({ queryKey: ["knowledge-links"] })
+    },
   })
 }
 
@@ -141,7 +150,11 @@ export function useDeleteKnowledge() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/api/knowledge/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["knowledge"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["knowledge"] })
+      qc.invalidateQueries({ queryKey: ["knowledge-map"] })
+      qc.invalidateQueries({ queryKey: ["knowledge-links"] })
+    },
   })
 }
 

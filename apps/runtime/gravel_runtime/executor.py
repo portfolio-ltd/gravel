@@ -20,8 +20,9 @@ DOC_KINDS = {"analysis", "spec", "plan", "scenarios", "review", "verification", 
 SYSTEM_INSTRUCTIONS = """You are an autonomous software engineer working on the task described in .gravel/.
 
 Read .gravel/TASK.md, .gravel/STAGE_INSTRUCTIONS.md, .gravel/COMMENTS.md, .gravel/PROJECT_CONTEXT.md,
-.gravel/QUESTIONS.md and .gravel/KNOWLEDGE.md, plus .gravel/CODE_MAP.md (a map of the repository) and
-.gravel/SUBAGENTS.md (subagents you can delegate to) when present, and any earlier stage documents
+.gravel/QUESTIONS.md and .gravel/KNOWLEDGE.md, plus .gravel/CODE_MAP.md (a map of the repository),
+.gravel/LINKS.md (designs, tickets and external specs), .gravel/SUBAGENTS.md (subagents you can delegate to)
+and .gravel/HARNESS.md (the limits this run works under) when present, and any earlier stage documents
 under .gravel/docs/. Then do the work STAGE_INSTRUCTIONS.md describes. Never invent requirements: anything you cannot
 decide from this material is an open question with an owner.
 
@@ -116,8 +117,20 @@ def run_opencode(workspace: Path, provider: str, model: str) -> dict:
     return collect_outputs(workspace, parsed or {"outcome_type": "failed", "summary": ""})
 
 
+def read_harness(workspace: Path) -> dict:
+    """Executor settings from the bundle's harness (.gravel/harness.json), or {} when absent."""
+    path = workspace / ".gravel" / "harness.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def claude_graph_args(workspace: Path) -> list[str]:
-    """Subagents (--agents) and the test-gate Stop hook (--settings) from the bundle."""
+    """Subagents (--agents), the test-gate Stop hook (--settings) and the harness's limits from the bundle."""
     base = workspace / ".gravel" / "claude"
     args: list[str] = []
     agents = base / "agents.json"
@@ -126,6 +139,18 @@ def claude_graph_args(workspace: Path) -> list[str]:
     settings = base / "settings.json"
     if config.claude_test_gate and settings.exists():
         args += ["--settings", str(settings)]
+    harness = read_harness(workspace)
+    # The harness's turn limit applies when the runtime itself sets none; the
+    # runtime's own limit, when set, is the ceiling
+    turns = int(harness.get("max_turns") or 0)
+    if turns > 0 and (config.claude_max_turns <= 0 or turns < config.claude_max_turns):
+        args += ["--max-turns", str(turns)]
+    allowed = [str(t) for t in harness.get("allowed_tools") or [] if str(t).strip()]
+    disallowed = [str(t) for t in harness.get("disallowed_tools") or [] if str(t).strip()]
+    if allowed:
+        args += ["--allowedTools", ",".join(allowed)]
+    if disallowed:
+        args += ["--disallowedTools", ",".join(disallowed)]
     return args
 
 
@@ -141,9 +166,10 @@ def run_claude_code(workspace: Path, provider: str, model: str) -> dict:
         "--model", model,
         "--dangerously-skip-permissions",
     ]
-    if config.claude_max_turns > 0:
+    graph_args = claude_graph_args(workspace)
+    if config.claude_max_turns > 0 and "--max-turns" not in graph_args:
         cmd += ["--max-turns", str(config.claude_max_turns)]
-    cmd += claude_graph_args(workspace)
+    cmd += graph_args
     # The container runs as root, where Claude Code only skips permission
     # prompts once told it is inside a sandbox
     env = {**os.environ, "IS_SANDBOX": "1"}

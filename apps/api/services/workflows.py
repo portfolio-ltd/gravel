@@ -105,6 +105,7 @@ async def add_stage(db: AsyncSession, wf: Workflow, data: WorkflowStageCreate) -
 
     await _validate_stage_refs(db, wf, data.assigned_engineer_id, data.rework_target_stage_id, stage_id=None)
     await _validate_edge(db, wf, data.next_stage_id, stage_id=None, label="Next stage")
+    await _validate_harness(db, wf, data.harness_id)
 
     stage = WorkflowStage(
         id=new_uuid(),
@@ -121,6 +122,7 @@ async def add_stage(db: AsyncSession, wf: Workflow, data: WorkflowStageCreate) -
         max_rework_attempts=data.max_rework_attempts,
         rework_target_stage_id=data.rework_target_stage_id,
         next_stage_id=data.next_stage_id,
+        harness_id=data.harness_id,
     )
     db.add(stage)
     await db.flush()
@@ -144,6 +146,8 @@ async def update_stage(db: AsyncSession, wf: Workflow, stage: WorkflowStage, dat
         )
     if fields.get("next_stage_id"):
         await _validate_edge(db, wf, fields["next_stage_id"], stage_id=stage.id, label="Next stage")
+    if fields.get("harness_id"):
+        await _validate_harness(db, wf, fields["harness_id"])
     for key, value in fields.items():
         setattr(stage, key, value)
     await db.flush()
@@ -214,6 +218,17 @@ async def _validate_stage_refs(
         if not eng:
             raise HTTPException(400, "Assigned engineer not found")
     await _validate_edge(db, wf, rework_target_id, stage_id, label="Rework target")
+
+
+async def _validate_harness(db: AsyncSession, wf: Workflow, harness_id: str | None) -> None:
+    if not harness_id:
+        return
+    from models.harness import AgentHarness
+    found = (await db.execute(select(AgentHarness.id).where(
+        AgentHarness.id == harness_id, AgentHarness.organization_id == wf.organization_id,
+    ))).scalar_one_or_none()
+    if not found:
+        raise HTTPException(400, "Harness not found in this organization")
 
 
 async def _validate_edge(db: AsyncSession, wf: Workflow, target_id: str | None, stage_id: str | None,

@@ -189,10 +189,17 @@ async def _execute_stage(db, stage, task: Task, project: Project, keys: dict
         "provided, and when a stage would normally touch code, describe precisely what you would change. "
         "Never invent requirements or answers — record unknowns as open questions with an owner."
     )
+    from services import harness as harness_svc
+    harness = await harness_svc.resolve(db, stage, project.organization_id)
+    extra = (harness.instructions_markdown or "").strip() if harness else ""
+    task_text = sdlc.flatten_bundle_wikilinks(
+        {"TASK.md": f"{task.title}\n\n{task.description or 'No description provided.'}"},
+        await sdlc.accepted_knowledge(db, project))["TASK.md"]
     prompt = (
         f"# Stage: {stage.name}\n\n{sdlc.stage_instructions(stage)}\n\n"
-        f"Documents this stage is expected to produce: {produces}.\n\n"
-        f"# Task: {task.title}\n\n{task.description or 'No description provided.'}\n\n"
+        + (f"## Harness instructions\n\n{extra}\n\n" if extra else "")
+        + f"Documents this stage is expected to produce: {produces}.\n\n"
+        f"# Task: {task_text}\n\n"
         f"## Acceptance criteria\n{sdlc.render_criteria(task)}\n\n"
         f"## Comment thread\n{thread}\n\n{context}\n\n"
         "Reply with a single JSON object matching the stage result schema: outcome, summary, "

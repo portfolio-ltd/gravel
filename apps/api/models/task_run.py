@@ -57,6 +57,10 @@ class TaskRun(BaseModel):
         String(36), ForeignKey("workflow_stages.id", ondelete="SET NULL"), nullable=True, index=True
     )
     attempt_number: Mapped[int] = mapped_column(nullable=False, default=1)
+    # Harness the run was wrapped in (None for built-in defaults or in-process runs)
+    harness_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("agent_harnesses.id", ondelete="SET NULL"), nullable=True
+    )
     outcome: Mapped[TaskRunOutcome | None] = mapped_column(
         SAEnum(TaskRunOutcome, native_enum=False, length=50), nullable=True
     )

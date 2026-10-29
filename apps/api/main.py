@@ -22,7 +22,10 @@ from routers import (
     code_graph,
     engineers,
     files,
+    harnesses,
     integrations,
+    knowledge_map,
+    links,
     organizations,
     prds,
     projects,
@@ -129,6 +132,9 @@ app.include_router(tags.router,        prefix=API)
 app.include_router(prds.router,        prefix=API)
 app.include_router(sdlc.router,        prefix=API)
 app.include_router(code_graph.router,  prefix=API)
+app.include_router(harnesses.router,   prefix=API)
+app.include_router(knowledge_map.router, prefix=API)
+app.include_router(links.router,       prefix=API)
 app.include_router(ws.router)  # /ws/{project_id} — no /api prefix
 
 # Uploaded files are not served statically — evidence downloads go through the

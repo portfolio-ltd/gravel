@@ -183,13 +183,54 @@ async def seed():
                 (KnowledgeKind.runbook, KnowledgeStatus.proposed, None, "Re-sending a failed invoice digest",
                  "1. Find the failed job in the worker logs.\n2. Re-queue it with the original month.\n3. Confirm delivery in the mail provider."),
             ]
+            entries += [
+                (KnowledgeKind.wiki, KnowledgeStatus.accepted, None, "Billing overview",
+                 "How billing fits together, for anyone new to the area.\n\n"
+                 "- Every [[Invoice]] is generated from a subscription's billing period and stored per "
+                 "[[PostgreSQL is the system of record|the system-of-record decision]].\n"
+                 "- Exports follow [[Stream large exports]] so month-end never runs out of memory.\n"
+                 "- Errors from the billing API follow the [[API errors]] convention.\n\n"
+                 "See also [[Dunning]] — not written yet, which is why it shows as an unresolved link on the map."),
+            ]
+            from services.knowledge_graph import slugify
+            seeded: dict[str, KnowledgeEntry] = {}
             for kind, status, number, title, body in entries:
-                db.add(KnowledgeEntry(
+                entry = KnowledgeEntry(
                     organization_id=admin_org.id, kind=kind, status=status, number=number, title=title,
-                    body_markdown=body, created_by_id=admin.id,
+                    body_markdown=body, created_by_id=admin.id, slug=slugify(title),
                     author_type=CommentAuthorType.ai if status == KnowledgeStatus.proposed else CommentAuthorType.human,
-                ))
-            print("  created knowledge base (4 accepted, 1 proposed)")
+                )
+                db.add(entry)
+                seeded[title] = entry
+            await db.flush()
+            # The glossary term sits under the wiki overview
+            seeded["Invoice"].parent_id = seeded["Billing overview"].id
+            print("  created knowledge base (5 accepted, 1 proposed) with wikilinks")
+
+        # ── External links ────────────────────────────────────────────────────
+        from models.link import ExternalLink, LinkEntityType, LinkKind
+        if not (await db.execute(select(ExternalLink).where(ExternalLink.organization_id == admin_org.id))).scalars().first():
+            demo_project = (await db.execute(select(Project).where(
+                Project.organization_id == admin_org.id).order_by(Project.created_at))).scalars().first()
+            if demo_project is not None:
+                for title, url, kind in (
+                    ("Billing design file", "https://www.figma.com/", LinkKind.design),
+                    ("Billing service dashboard", "https://grafana.com/", LinkKind.dashboard),
+                    ("Stripe API reference", "https://docs.stripe.com/api", LinkKind.spec),
+                ):
+                    db.add(ExternalLink(organization_id=admin_org.id, entity_type=LinkEntityType.project,
+                                        entity_id=demo_project.id, url=url, title=title, kind=kind,
+                                        created_by_id=admin.id))
+                print("  created external links")
+
+        # ── Agent harness ─────────────────────────────────────────────────────
+        from models.harness import AgentHarness
+        from services.harness import template_fields
+        if not (await db.execute(select(AgentHarness).where(AgentHarness.organization_id == admin_org.id))).scalars().first():
+            db.add(AgentHarness(organization_id=admin_org.id, owner_id=admin.id, is_default=True,
+                                **template_fields("spec-driven")))
+            db.add(AgentHarness(organization_id=admin_org.id, owner_id=admin.id, **template_fields("read-only")))
+            print("  created agent harnesses (Spec-driven as default, Read-only analysis)")
 
         await db.commit()
         print("\nSeed complete! Demo credentials:")

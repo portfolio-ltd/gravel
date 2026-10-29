@@ -8,6 +8,7 @@ import type { ArtifactType, EvidenceArtifact, TaskRun, WorkflowStage } from "@/t
 import { useTaskRuns, useRetryTask } from "@/hooks/useTaskRuns"
 import { useDeleteArtifact, useUploadArtifact } from "@/hooks/useArtifacts"
 import { useTaskTokenSummary, formatTokens } from "@/hooks/useTokens"
+import { useHarnesses } from "@/hooks/useHarnesses"
 import { errorDetail, openArtifact } from "@/hooks/useTaskExtras"
 import Markdown from "@/components/Markdown"
 import { Button } from "@/components/ui/button"
@@ -36,7 +37,7 @@ function ArtifactChip({ artifact }: { artifact: EvidenceArtifact }) {
   )
 }
 
-function RunItem({ run, stageName, defaultOpen }: { run: TaskRun; stageName: string; defaultOpen: boolean }) {
+function RunItem({ run, stageName, defaultOpen, harnessName }: { run: TaskRun; stageName: string; defaultOpen: boolean; harnessName?: string }) {
   const [open, setOpen] = useState(defaultOpen)
   const outcome = run.outcome ? OUTCOME_META[run.outcome] : null
   const running = !run.outcome && !!run.claimed_at
@@ -59,6 +60,7 @@ function RunItem({ run, stageName, defaultOpen }: { run: TaskRun; stageName: str
         {!run.outcome && !run.claimed_at && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">queued</span>}
         {outcome && <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", outcome.tone)}>{outcome.label}</span>}
         {run.approved_at && <span className="text-[10px] text-success">approved</span>}
+        {harnessName && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground" title="Agent harness">{harnessName}</span>}
         <span className="ml-auto text-[11px] text-muted-foreground" title={format(new Date(run.started_at), "PPpp")}>
           {formatDistanceToNow(new Date(run.started_at), { addSuffix: true })}{took && ` · ${took}`}
         </span>
@@ -101,6 +103,7 @@ function artifactTypeFor(file: File): ArtifactType {
 export default function ActivityPanel({ taskId, stages }: { taskId: string; stages: WorkflowStage[] }) {
   const { data: runs, isLoading } = useTaskRuns(taskId)
   const { data: tokens } = useTaskTokenSummary(taskId)
+  const { data: harnesses } = useHarnesses()
   const upload = useUploadArtifact()
   const retry = useRetryTask()
   const stageName = (run: TaskRun) =>
@@ -151,7 +154,8 @@ export default function ActivityPanel({ taskId, stages }: { taskId: string; stag
       ) : runs && runs.length > 0 ? (
         <ol className="relative space-y-1 before:absolute before:bottom-2 before:left-[4.5px] before:top-2 before:w-px before:bg-border">
           {runs.map((run, i) => (
-            <RunItem key={run.id} run={run} stageName={stageName(run)} defaultOpen={i === 0} />
+            <RunItem key={run.id} run={run} stageName={stageName(run)} defaultOpen={i === 0}
+              harnessName={run.harness_id ? harnesses?.find((h) => h.id === run.harness_id)?.name : undefined} />
           ))}
         </ol>
       ) : (
