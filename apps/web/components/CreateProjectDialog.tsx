@@ -33,6 +33,14 @@ interface CreateProjectDialogProps {
   onCreated?: (project: Project) => void
 }
 
+/** https://github.com/owner/repo for an "owner/repo" or GitHub URL input; undefined when blank. */
+function repoUrlOf(input: string): string | undefined {
+  const v = input.trim().replace(/\.git$/, "").replace(/\/+$/, "")
+  if (!v) return undefined
+  if (/^https?:\/\//.test(v)) return v
+  return `https://github.com/${v.replace(/^github\.com\//, "")}`
+}
+
 export default function CreateProjectDialog({ open, onOpenChange, onCreated }: CreateProjectDialogProps) {
   const [step, setStep] = useState<Step>("name")
   const [name, setName] = useState("")
@@ -47,6 +55,7 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
   const [showIssues, setShowIssues] = useState(false)
   const [issuesRepo, setIssuesRepo] = useState("")
   const [postComments, setPostComments] = useState(false)
+  const [syncIssues, setSyncIssues] = useState(true)
   const [project, setProject] = useState<Project | null>(null)
   const [parsedTasks, setParsedTasks] = useState<ParsedTask[]>([])
   const [prdFile, setPrdFile] = useState<File | null>(null)
@@ -69,6 +78,7 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
     setShowIssues(false)
     setIssuesRepo("")
     setPostComments(false)
+    setSyncIssues(true)
     setProject(null)
     setParsedTasks([])
     setPrdFile(null)
@@ -90,8 +100,10 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
         default_model: model || undefined,
         workflow_id: workflowChoice.startsWith("wf:") ? workflowChoice.slice(3) : undefined,
         workflow_template: workflowChoice.startsWith("tpl:") ? workflowChoice.slice(4) : undefined,
-        issues_repo: issuesRepo.trim() || undefined,
-        post_issue_comments: issuesRepo.trim() ? postComments : undefined,
+        // An existing repo: mapped into a code graph (repo_url) and, optionally, its issues synced
+        repo_url: repoUrlOf(issuesRepo),
+        issues_repo: issuesRepo.trim() && syncIssues ? issuesRepo.trim() : undefined,
+        post_issue_comments: issuesRepo.trim() && syncIssues ? postComments : undefined,
       })
       created = proj
       setProject(proj)
@@ -218,18 +230,22 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }: C
                 aria-expanded={showIssues}
                 className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-medium"
               >
-                <Github className="h-3.5 w-3.5" /> Sync with GitHub issues
+                <Github className="h-3.5 w-3.5" /> Start from an existing GitHub repository
                 <span className="font-normal text-muted-foreground">— optional</span>
                 <ChevronRight className={cn("ml-auto h-3.5 w-3.5 transition-transform", showIssues && "rotate-90")} />
               </button>
               {showIssues && (
                 <div className="space-y-3 border-t px-3 py-3">
-                  <Field label="Issues repository" hint="owner/repo or a GitHub URL. Import issues from the project page.">
+                  <Field label="Repository" hint="owner/repo or a GitHub URL. Gravel maps its code into a graph that grounds every run; private repos need a GitHub integration.">
                     <Input value={issuesRepo} onChange={(e) => setIssuesRepo(e.target.value)} placeholder="acme/web" className="font-mono text-xs" />
                   </Field>
                   <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs">Sync its issues (import them from the project page)</span>
+                    <Switch checked={syncIssues} onChange={setSyncIssues} disabled={!issuesRepo.trim()} label="Sync its issues" />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
                     <span className="text-xs">Post stage results as issue comments</span>
-                    <Switch checked={postComments} onChange={setPostComments} disabled={!issuesRepo.trim()} label="Post stage results as issue comments" />
+                    <Switch checked={postComments} onChange={setPostComments} disabled={!issuesRepo.trim() || !syncIssues} label="Post stage results as issue comments" />
                   </div>
                 </div>
               )}

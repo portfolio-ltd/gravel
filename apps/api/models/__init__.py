@@ -1,4 +1,5 @@
 from .changelog import ChangelogEntry, ChangelogType
+from .code_graph import CodeGraph, CodeGraphStatus
 from .engineer import Engineer, EngineerRuntime, EngineerStatus
 from .integration import DeployEnvironment, DeployProvider, GitIntegration, GitProvider
 from .organization import Organization, OrganizationMember, OrgRole
@@ -48,4 +49,5 @@ __all__ = [
     "TokenUsage",
     "TaskDocument", "DocumentKind", "OpenQuestion", "QuestionStatus",
     "KnowledgeEntry", "KnowledgeKind", "KnowledgeStatus",
+    "CodeGraph", "CodeGraphStatus",
 ]

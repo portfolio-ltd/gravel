@@ -200,3 +200,23 @@ def test_select_model_falls_back_without_the_provider_key(monkeypatch):
     assert (provider, model) == ("anthropic", "claude-opus-5-5") and "gpt-5" in note
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     assert executor.select_model({"model": "gpt-5", "model_provider": "openai"}) == ("openai", "gpt-5", None)
+
+
+def test_claude_code_passes_bundle_subagents_and_test_gate(claude_code, monkeypatch, tmp_path: Path):
+    claude_code["stdout"] = _claude_envelope('{"outcome": "completed", "summary": "s"}')
+    executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
+    assert "--agents" not in claude_code["cmd"] and "--settings" not in claude_code["cmd"]
+
+    claude_dir = tmp_path / ".gravel" / "claude"
+    claude_dir.mkdir(parents=True)
+    (claude_dir / "agents.json").write_text('{"reviewer": {"description": "d", "prompt": "p"}}')
+    (claude_dir / "settings.json").write_text('{"hooks": {}}')
+    executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
+    cmd = claude_code["cmd"]
+    assert cmd[cmd.index("--agents") + 1] == '{"reviewer": {"description": "d", "prompt": "p"}}'
+    assert cmd[cmd.index("--settings") + 1] == str(claude_dir / "settings.json")
+
+    monkeypatch.setattr(config, "claude_subagents", False)
+    monkeypatch.setattr(config, "claude_test_gate", False)
+    executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
+    assert "--agents" not in claude_code["cmd"] and "--settings" not in claude_code["cmd"]

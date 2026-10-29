@@ -92,6 +92,14 @@ are ignored.
   PROJECT_CONTEXT.md      repo, branches, resolved model, engineer skills
   KNOWLEDGE.md            accepted decisions, patterns, glossary, runbooks, conventions
   QUESTIONS.md            open / answered / deferred questions with ids
+  CODE_MAP.md             the repository's code graph: overview, stack, commands, the
+                          modules this task likely touches and the decisions that
+                          mention them (when the project has a mapped repo)
+  SUBAGENTS.md            the subagents this run can delegate to, and how to route work
+  claude/agents.json      subagent definitions for the stage's role (`claude --agents`)
+  claude/settings.json    test-gate Stop hook (`claude --settings`), code-writing runs only
+  claude/test_gate.py     the hook: runs the project's test commands once before the
+  claude/test_gate.json   run may finish and feeds failures back
   OUTPUT_CONTRACT.md      how to report the result
   docs/ANALYSIS.md        latest stage documents, when they exist
   docs/SPEC.md
@@ -101,6 +109,11 @@ are ignored.
   docs/VERIFICATION.md
   output/                 the engineer writes its result here
 ```
+
+Only the Claude Code executor uses `claude/`; set `GRAVEL_CLAUDE_SUBAGENTS=false`
+or `GRAVEL_CLAUDE_TEST_GATE=false` on the runtime to turn either off. The gate
+blocks at most once per run (it lets the run finish when it is already
+continuing because of the gate) and skips commands whose tool isn't installed.
 
 ### Reporting from the workspace
 

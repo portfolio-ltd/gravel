@@ -4,8 +4,8 @@ import { Suspense, useEffect, useRef, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import {
-  ChevronRight, Cpu, Download, ExternalLink, FileText, FolderOpen, GitBranch, Github, Loader2, MoreHorizontal,
-  Play, Plus, RefreshCw, Trash2, Upload, Wifi, WifiOff, Zap,
+  ChevronRight, Cpu, Download, ExternalLink, FileText, FolderOpen, GitBranch, Github, List, Loader2, MoreHorizontal,
+  Network, Play, Plus, RefreshCw, Trash2, Upload, Wifi, WifiOff, Zap,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -19,6 +19,8 @@ import TaskCard from "@/components/TaskCard"
 import ChangelogItem from "@/components/ChangelogItem"
 import CreateProjectDialog from "@/components/CreateProjectDialog"
 import { Pipeline, stagesFromWorkflow } from "@/components/workflow/Pipeline"
+import CodeGraphPanel from "@/components/graph/CodeGraphPanel"
+import TaskGraph from "@/components/graph/TaskGraph"
 import { useProjects, useProject, useDeleteProject, useAdvanceProject, useUpdateProject } from "@/hooks/useProjects"
 import { useWorkflows } from "@/hooks/useWorkflows"
 import { useTasks, useUpdateTask, useDeleteTask, useCreateTask } from "@/hooks/useTasks"
@@ -98,7 +100,7 @@ function RepoSettings({ project }: { project: Project }) {
   return (
     <SectionCard
       title={<span className="inline-flex items-center gap-2"><GitBranch className="h-4 w-4 text-muted-foreground" /> Code repository</span>}
-      description="Engineer runtimes clone this, work on a task branch, and open pull requests."
+      description="Engineer runtimes clone this, work on a task branch, and open pull requests. Saving a GitHub repository maps it on the Code tab."
     >
       <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
         <Field label="Repository URL">
@@ -373,6 +375,7 @@ function ProjectDetail({ projectId }: { projectId: string }) {
   const runAgent = useRunAgent()
   const { connected } = useProjectSocket(projectId)
   const { user } = useAuth()
+  const [taskView, setTaskView] = useState<"list" | "graph">("list")
 
   if (isLoading || !project) {
     return (
@@ -411,7 +414,11 @@ function ProjectDetail({ projectId }: { projectId: string }) {
 
   const canRun = CAN_RUN[project.status] && (user?.role === "admin" || user?.role === "developer" || user?.role === "devops")
   const canAdvance = CAN_ADVANCE[project.status] && (user?.role === "admin" || user?.role === "developer" || user?.role === "product")
-  const sortedTasks = [...tasks].sort((a, b) => a.position - b.position)
+  const statusById = new Map(tasks.map((t) => [t.id, t.status]))
+  const sortedTasks = [...tasks].sort((a, b) => a.position - b.position).map((t) => ({
+    ...t,
+    waiting_on_count: (t.depends_on ?? []).filter((d) => statusById.has(d) && statusById.get(d) !== "done").length,
+  }))
 
   return (
     <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
@@ -454,14 +461,28 @@ function ProjectDetail({ projectId }: { projectId: string }) {
       <Tabs defaultValue="tasks">
         <TabsList className="mb-4">
           <TabsTrigger value="tasks">Tasks ({total})</TabsTrigger>
+          <TabsTrigger value="code">Code</TabsTrigger>
           <TabsTrigger value="sources">Sources</TabsTrigger>
           <TabsTrigger value="changelog">Changelog</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
         <TabsContent value="tasks">
-          <AddTaskForm projectId={projectId} />
-          {sortedTasks.length === 0 ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+            <div className="flex-1"><AddTaskForm projectId={projectId} /></div>
+            <Segmented
+              size="sm"
+              value={taskView}
+              onChange={setTaskView}
+              options={[
+                { value: "list", label: <span className="inline-flex items-center gap-1"><List className="h-3 w-3" /> List</span> },
+                { value: "graph", label: <span className="inline-flex items-center gap-1"><Network className="h-3 w-3" /> Graph</span> },
+              ]}
+            />
+          </div>
+          {sortedTasks.length > 0 && taskView === "graph" ? (
+            <TaskGraph tasks={sortedTasks} />
+          ) : sortedTasks.length === 0 ? (
             <EmptyState
               icon={<FolderOpen className="h-5 w-5" />}
               title="No tasks yet"
@@ -479,6 +500,10 @@ function ProjectDetail({ projectId }: { projectId: string }) {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="code">
+          <CodeGraphPanel project={project} />
         </TabsContent>
 
         <TabsContent value="sources" className="space-y-4">

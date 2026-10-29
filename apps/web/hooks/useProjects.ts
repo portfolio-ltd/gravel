@@ -27,6 +27,7 @@ export function useCreateProject() {
       default_model?: string
       workflow_id?: string
       workflow_template?: string
+      repo_url?: string
       issues_repo?: string
       post_issue_comments?: boolean
     }) =>

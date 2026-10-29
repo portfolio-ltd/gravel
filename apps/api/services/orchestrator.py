@@ -7,10 +7,17 @@ Default lifecycle of a task (project without a custom workflow):
                                           └───────(no deploy target)──▶ done
 
 Projects with a custom workflow (project.workflow_id set) instead move tasks
-through user-defined ordered stages; a run is a stage run iff
+through a graph of user-defined stages; a run is a stage run iff
 run.workflow_stage_id is set (its phase stays `build` — the only phase whose
-git behavior is generically correct). Non-AI stages become gated "checkpoint
-runs" born terminal; failed/blocked stage runs follow the stage's rework loop.
+git behavior is generically correct). A completed stage follows its success
+edge (next_stage_id, else the next stage by order); a failed/blocked one its
+rework edge. Non-AI stages become gated "checkpoint runs" born terminal. A
+stop rule parks a task that keeps re-entering one stage without a human
+approval, so a cyclic graph can't loop forever.
+
+Tasks can depend on other tasks (services/task_graph.py): a task is queued
+only once its dependencies are done, and finishing one releases its
+dependents.
 
 Every phase/stage executes as a TaskRun. Completion outcomes park the run
 behind a human approval gate (approval_required=True) where configured;
@@ -100,6 +107,11 @@ async def ordered_stages(db: AsyncSession, workflow_id: str) -> list[WorkflowSta
 
 
 def next_stage_of(stages: list[WorkflowStage], current: WorkflowStage) -> WorkflowStage | None:
+    """Follow the success edge: the explicit next stage, else the next by order."""
+    if current.next_stage_id:
+        target = next((s for s in stages if s.id == current.next_stage_id), None)
+        if target is not None:
+            return target
     ids = [s.id for s in stages]
     idx = ids.index(current.id)
     return stages[idx + 1] if idx + 1 < len(stages) else None
@@ -126,6 +138,24 @@ async def _stage_attempt_number(db: AsyncSession, task_id: str, stage_id: str) -
     return count + 1
 
 
+# Stop rule: entering the same stage this many times since a person last
+# approved anything on the task parks it for a human instead.
+MAX_STAGE_VISITS = 10
+
+
+async def _visits_since_approval(db: AsyncSession, task_id: str, stage_id: str) -> int:
+    from sqlalchemy import func
+    last_approval = (await db.execute(
+        select(func.max(TaskRun.approved_at)).where(TaskRun.task_id == task_id)
+    )).scalar_one()
+    q = select(func.count()).select_from(TaskRun).where(
+        TaskRun.task_id == task_id, TaskRun.workflow_stage_id == stage_id
+    )
+    if last_approval is not None:
+        q = q.where(TaskRun.started_at > last_approval)
+    return (await db.execute(q)).scalar_one()
+
+
 async def enter_stage(
     db: AsyncSession, task: Task, stage: WorkflowStage,
     stages: list[WorkflowStage] | None = None,
@@ -146,6 +176,7 @@ async def enter_stage(
 
     now = datetime.now(timezone.utc)
     attempt = await _stage_attempt_number(db, task.id, stage.id)
+    looping = await _visits_since_approval(db, task.id, stage.id) >= MAX_STAGE_VISITS
     run = TaskRun(
         id=new_uuid(),
         task_id=task.id,
@@ -154,12 +185,16 @@ async def enter_stage(
         attempt_number=attempt,
         started_at=now,
     )
-    if not stage.is_ai_executable:
+    parked = not stage.is_ai_executable or looping
+    if parked:
         run.claimed_at = now
         run.completed_at = now
         run.outcome = TaskRunOutcome.needs_human_input
         run.approval_required = True
-        run.blocking_reason = f"Manual stage '{stage.name}' — approve when the work is done"
+        run.blocking_reason = (
+            f"Stop rule: '{stage.name}' was entered {MAX_STAGE_VISITS} times without a human approval — "
+            "check the workflow's edges, then approve to run it again"
+        ) if looping else f"Manual stage '{stage.name}' — approve when the work is done"
     db.add(run)
     await db.flush()
 
@@ -167,7 +202,7 @@ async def enter_stage(
         "type": "task.updated",
         "task": {"id": task.id, "status": task.status.value},
     })
-    if not stage.is_ai_executable:
+    if parked:
         await ws_manager.broadcast(task.project_id, {
             "type": "task_run.outcome",
             "run_id": run.id,
@@ -415,6 +450,10 @@ async def apply_outcome(
             type=ChangelogType.added if outcome == TaskRunOutcome.deployment_complete else ChangelogType.changed,
         ))
 
+    if task.status == TaskStatus.done:
+        from services.task_graph import release_dependents
+        await release_dependents(db, task)
+
     # Release any runtime claim on this run
     rt_result = await db.execute(
         select(EngineerRuntime).where(EngineerRuntime.current_task_run_id == run.id)
@@ -549,6 +588,7 @@ async def advance_after_approval(db: AsyncSession, run: TaskRun, note: str | Non
         db.add(TaskRunLog(id=new_uuid(), task_run_id=run.id, message=f"Approved: {note}", level="info"))
 
     if run.workflow_stage_id:
+        await db.flush()  # the stop rule counts visits since this approval
         await _advance_stage_after_approval(db, run, task, project)
         await db.flush()
         return run
@@ -603,6 +643,8 @@ async def _finish_task(db: AsyncSession, task: Task, project: Project) -> None:
         type=ChangelogType.added,
     ))
     await db.flush()
+    from services.task_graph import release_dependents
+    await release_dependents(db, task)
     await db.refresh(project, ["tasks"])
     progress = await recalculate_progress(db, project)
     if project.tasks and all(t.status == TaskStatus.done for t in project.tasks) \

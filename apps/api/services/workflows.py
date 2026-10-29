@@ -59,8 +59,9 @@ async def create_workflow(db: AsyncSession, owner_id: str, data: WorkflowCreate,
             stage_instructions=stage.stage_instructions,
             model=_clean_model(stage.model),
             max_rework_attempts=stage.max_rework_attempts,
-            # Inline rework targets can't reference not-yet-created ids — set via PATCH from the editor
+            # Inline edges can't reference not-yet-created ids — set via PATCH from the editor
             rework_target_stage_id=None,
+            next_stage_id=None,
         ))
     await db.flush()
     await db.refresh(wf, ["stages"])
@@ -103,6 +104,7 @@ async def add_stage(db: AsyncSession, wf: Workflow, data: WorkflowStageCreate) -
         order = data.stage_order
 
     await _validate_stage_refs(db, wf, data.assigned_engineer_id, data.rework_target_stage_id, stage_id=None)
+    await _validate_edge(db, wf, data.next_stage_id, stage_id=None, label="Next stage")
 
     stage = WorkflowStage(
         id=new_uuid(),
@@ -118,6 +120,7 @@ async def add_stage(db: AsyncSession, wf: Workflow, data: WorkflowStageCreate) -
         model=_clean_model(data.model),
         max_rework_attempts=data.max_rework_attempts,
         rework_target_stage_id=data.rework_target_stage_id,
+        next_stage_id=data.next_stage_id,
     )
     db.add(stage)
     await db.flush()
@@ -139,6 +142,8 @@ async def update_stage(db: AsyncSession, wf: Workflow, stage: WorkflowStage, dat
             fields.get("rework_target_stage_id", stage.rework_target_stage_id),
             stage_id=stage.id,
         )
+    if fields.get("next_stage_id"):
+        await _validate_edge(db, wf, fields["next_stage_id"], stage_id=stage.id, label="Next stage")
     for key, value in fields.items():
         setattr(stage, key, value)
     await db.flush()
@@ -154,12 +159,17 @@ async def delete_stage(db: AsyncSession, stage: WorkflowStage) -> None:
     if active:
         raise HTTPException(409, f"{active} active task(s) sit on stage '{stage.name}' — move them first")
 
-    # Clear sibling rework targets explicitly — don't rely on FK actions (SQLite create_all)
+    # Clear sibling edges into this stage explicitly — don't rely on FK actions (SQLite create_all)
     siblings = (await db.execute(
-        select(WorkflowStage).where(WorkflowStage.rework_target_stage_id == stage.id)
+        select(WorkflowStage).where(
+            (WorkflowStage.rework_target_stage_id == stage.id) | (WorkflowStage.next_stage_id == stage.id)
+        )
     )).scalars().all()
     for s in siblings:
-        s.rework_target_stage_id = None
+        if s.rework_target_stage_id == stage.id:
+            s.rework_target_stage_id = None
+        if s.next_stage_id == stage.id:
+            s.next_stage_id = None
     await db.delete(stage)
     await db.flush()
 
@@ -203,13 +213,17 @@ async def _validate_stage_refs(
         )).scalar_one_or_none()
         if not eng:
             raise HTTPException(400, "Assigned engineer not found")
-    if rework_target_id:
-        if stage_id and rework_target_id == stage_id:
-            raise HTTPException(400, "A stage cannot be its own rework target")
-        target = (await db.execute(
-            select(WorkflowStage.id).where(
-                WorkflowStage.id == rework_target_id, WorkflowStage.workflow_id == wf.id
-            )
-        )).scalar_one_or_none()
-        if not target:
-            raise HTTPException(400, "Rework target must be a stage in the same workflow")
+    await _validate_edge(db, wf, rework_target_id, stage_id, label="Rework target")
+
+
+async def _validate_edge(db: AsyncSession, wf: Workflow, target_id: str | None, stage_id: str | None,
+                         label: str) -> None:
+    if not target_id:
+        return
+    if stage_id and target_id == stage_id:
+        raise HTTPException(400, f"{label} cannot be the stage itself")
+    target = (await db.execute(
+        select(WorkflowStage.id).where(WorkflowStage.id == target_id, WorkflowStage.workflow_id == wf.id)
+    )).scalar_one_or_none()
+    if not target:
+        raise HTTPException(400, f"{label} must be a stage in the same workflow")

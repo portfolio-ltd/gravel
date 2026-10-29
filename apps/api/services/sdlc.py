@@ -41,8 +41,9 @@ from models.task_run import CommentAuthorType
 
 _GROUNDING = (
     "Ground your work in .gravel/KNOWLEDGE.md (accepted decision records, patterns, "
-    "glossary, runbooks, conventions) and in the documents earlier stages produced "
-    "under .gravel/docs/. Use the glossary's terms. If you discover something the "
+    "glossary, runbooks, conventions), in .gravel/CODE_MAP.md when present (the "
+    "repository's modules, how they depend on each other, and its commands), and in "
+    "the documents earlier stages produced under .gravel/docs/. Use the glossary's terms. If you discover something the "
     "next engineer should not have to rediscover — a decision, a reusable pattern, "
     "a domain term, an operational gotcha — propose it as a knowledge entry "
     "(at most three per run; most runs propose none)."
@@ -590,15 +591,22 @@ def render_questions(questions: list[OpenQuestion]) -> str:
 
 
 async def bundle_files(db: AsyncSession, task: Task, project: Project) -> dict[str, str]:
-    """Extra .gravel/ files: knowledge, questions, earlier documents, contract."""
+    """Extra .gravel/ files: knowledge, questions, code map, earlier documents, contract."""
     questions = list((await db.execute(
         select(OpenQuestion).where(OpenQuestion.task_id == task.id).order_by(OpenQuestion.created_at)
     )).scalars())
+    knowledge = await accepted_knowledge(db, project)
     files = {
-        "KNOWLEDGE.md": render_knowledge(await accepted_knowledge(db, project)),
+        "KNOWLEDGE.md": render_knowledge(knowledge),
         "QUESTIONS.md": render_questions(questions),
         "OUTPUT_CONTRACT.md": OUTPUT_CONTRACT_MD,
     }
+    from models.code_graph import CodeGraphStatus
+    from services.code_graph import get_for_project, render_for_task
+    graph = await get_for_project(db, project.id)
+    if graph is not None and graph.status == CodeGraphStatus.ready and graph.graph:
+        task_text = f"{task.title}\n{task.description}\n{render_criteria(task)}"
+        files["CODE_MAP.md"] = render_for_task(graph, task_text, knowledge)
     for kind, doc in (await latest_documents(db, task.id)).items():
         files[_DOC_FILES[kind]] = doc.body_markdown
     return files

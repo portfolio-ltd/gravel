@@ -62,6 +62,9 @@ export function useProjectSocket(projectId: string | null) {
             qc.invalidateQueries({ queryKey: ["task-runs", msg.task_id] })
           }
           break
+        case "code_graph.updated":
+          qc.invalidateQueries({ queryKey: ["code-graph", projectId] })
+          break
         case "engineer.heartbeat":
           qc.invalidateQueries({ queryKey: ["engineers"] })
           break

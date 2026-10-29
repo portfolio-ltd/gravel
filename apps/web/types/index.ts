@@ -69,6 +69,8 @@ export interface Task {
   external_source: string | null
   external_id: string | null
   external_url: string | null
+  /** Task graph: ids of tasks in the same project that must be done first */
+  depends_on: string[]
   tags: Tag[]
   created_at: string
   updated_at: string
@@ -387,6 +389,8 @@ export interface WorkflowStage {
   model: string | null
   max_rework_attempts: number
   rework_target_stage_id: string | null
+  /** Success edge; null = the next stage by order */
+  next_stage_id: string | null
   created_at: string
   updated_at: string
 }
@@ -414,6 +418,7 @@ export interface WorkflowStageCreate {
   model?: string | null
   max_rework_attempts?: number
   rework_target_stage_id?: string | null
+  next_stage_id?: string | null
 }
 
 export interface WorkflowCreate {
@@ -528,4 +533,41 @@ export interface IssueImportResult {
   skipped: number
   total: number
   authenticated: boolean
+}
+
+// ── Code graph ───────────────────────────────────────────────────────────────
+
+export type CodeGraphStatus = "pending" | "building" | "ready" | "failed"
+
+export interface CodeModule {
+  id: string
+  label: string
+  files: number
+  lines: number
+  languages: string[]
+  key_files: string[]
+  externals: string[]
+  purpose: string
+}
+
+export interface CodeGraphData {
+  stats: { files: number; lines: number; languages: Record<string, number> }
+  stack: string[]
+  commands: { cwd: string; name: string; run: string }[]
+  entry_points: string[]
+  modules: CodeModule[]
+  edges: { source: string; target: string; weight: number }[]
+}
+
+export interface CodeGraph {
+  project_id: string
+  status: CodeGraphStatus
+  repo_url: string | null
+  ref: string | null
+  commit_sha: string | null
+  graph: CodeGraphData | null
+  summary_markdown: string | null
+  error: string | null
+  built_at: string | null
+  updated_at: string
 }

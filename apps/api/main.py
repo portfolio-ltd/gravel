@@ -19,6 +19,7 @@ from routers import (
     auth,
     board,
     changelog,
+    code_graph,
     engineers,
     files,
     integrations,
@@ -127,6 +128,7 @@ app.include_router(organizations.router, prefix=API)
 app.include_router(tags.router,        prefix=API)
 app.include_router(prds.router,        prefix=API)
 app.include_router(sdlc.router,        prefix=API)
+app.include_router(code_graph.router,  prefix=API)
 app.include_router(ws.router)  # /ws/{project_id} — no /api prefix
 
 # Uploaded files are not served statically — evidence downloads go through the

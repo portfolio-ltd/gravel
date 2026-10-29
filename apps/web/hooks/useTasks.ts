@@ -24,11 +24,15 @@ export function useCreateTask(projectId: string) {
 export function useUpdateTask(projectId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ taskId, ...data }: { taskId: string; title?: string; description?: string; status?: TaskStatus; priority?: TaskPriority; type?: TaskType }) =>
+    mutationFn: ({ taskId, ...data }: {
+      taskId: string; title?: string; description?: string; status?: TaskStatus; priority?: TaskPriority; type?: TaskType
+      depends_on?: string[]
+    }) =>
       apiFetch<Task>(`/api/projects/${projectId}/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify(data) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tasks", projectId] })
       qc.invalidateQueries({ queryKey: ["project", projectId] })
+      qc.invalidateQueries({ queryKey: ["board"] })
     },
   })
 }

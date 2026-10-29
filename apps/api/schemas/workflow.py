@@ -15,6 +15,7 @@ class WorkflowStageCreate(BaseModel):
     model: str | None = None  # None → inherit (engineer → project → DEFAULT_MODEL)
     max_rework_attempts: int = 3
     rework_target_stage_id: str | None = None
+    next_stage_id: str | None = None  # None → the next stage by order
 
 
 class WorkflowStageUpdate(BaseModel):
@@ -29,6 +30,7 @@ class WorkflowStageUpdate(BaseModel):
     model: str | None = None
     max_rework_attempts: int | None = None
     rework_target_stage_id: str | None = None
+    next_stage_id: str | None = None
 
 
 class WorkflowStageOut(BaseModel):
@@ -45,6 +47,7 @@ class WorkflowStageOut(BaseModel):
     model: str | None = None
     max_rework_attempts: int
     rework_target_stage_id: str | None
+    next_stage_id: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -54,8 +57,8 @@ class WorkflowStageOut(BaseModel):
 class WorkflowCreate(BaseModel):
     name: str
     description: str | None = None
-    # Inline stages get stage_order = index; rework targets need real ids,
-    # so they are set afterwards via PATCH from the editor.
+    # Inline stages get stage_order = index; rework targets and next-stage
+    # edges need real ids, so they are set afterwards via PATCH from the editor.
     stages: list[WorkflowStageCreate] = []
 
 

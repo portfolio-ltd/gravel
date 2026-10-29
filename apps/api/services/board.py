@@ -54,10 +54,15 @@ async def get_board(db: AsyncSession, organization_id: str, project_id: str | No
 
 
 async def _enricher(db: AsyncSession, tasks: list[Task]):
-    """Per-task extras for cards: open blocking questions and current stage name."""
+    """Per-task extras for cards: open blocking questions, current stage name, unfinished dependencies."""
     ids = [t.id for t in tasks]
     counts: dict[str, int] = {}
     names: dict[str, str] = {}
+    status_of = {t.id: t.status for t in tasks}
+    missing = {d for t in tasks for d in t.depends_on or []} - set(status_of)
+    if missing:
+        rows = await db.execute(select(Task.id, Task.status).where(Task.id.in_(missing)))
+        status_of.update({tid: status for tid, status in rows.all()})
     if ids:
         rows = await db.execute(
             select(OpenQuestion.task_id, func.count()).where(
@@ -75,6 +80,8 @@ async def _enricher(db: AsyncSession, tasks: list[Task]):
         out = BoardTaskOut.model_validate(t)
         out.open_question_count = counts.get(t.id, 0)
         out.stage_name = names.get(t.workflow_stage_id) if t.workflow_stage_id else None
+        out.waiting_on_count = sum(1 for d in t.depends_on or []
+                                   if d in status_of and status_of[d] != TaskStatus.done)
         return out
     return enrich
 
