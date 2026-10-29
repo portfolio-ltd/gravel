@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     RUNTIME_HEARTBEAT_INTERVAL_SECONDS: int = 60
     RUNTIME_EXECUTOR: str = "opencode"    # opencode | claude-code (needs an Anthropic model) | llm
 
+    # ── Code graph ────────────────────────────────────────────────────────────
+    # Map a project's repository when it is created with (or switched to) a repo
+    CODE_GRAPH_AUTO_BUILD: bool = True
+    CODE_GRAPH_MAX_ARCHIVE_MB: int = 100
+
     # ── Git integrations ──────────────────────────────────────────────────────
     GITHUB_CLIENT_ID: str = ""
     GITHUB_CLIENT_SECRET: str = ""

@@ -55,4 +55,9 @@ class WorkflowStage(BaseModel):
         nullable=True,
     )
 
+    # Success edge: where a completed stage goes next. None → the next stage by
+    # stage_order. Together with rework_target_stage_id (the failure edge) this
+    # makes a workflow a graph that can branch and loop.
+    next_stage_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
     workflow: Mapped["Workflow"] = relationship("Workflow", back_populates="stages")

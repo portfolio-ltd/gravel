@@ -13,6 +13,7 @@ class TaskCreate(BaseModel):
     type: TaskType = TaskType.feature
     position: int = 0
     acceptance_criteria: list[str] | None = None
+    depends_on: list[str] | None = None  # ids of tasks in the same project
 
 
 class TaskUpdate(BaseModel):
@@ -21,6 +22,7 @@ class TaskUpdate(BaseModel):
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
     type: TaskType | None = None
+    depends_on: list[str] | None = None  # replaces the list; [] clears it
 
 
 class TaskReorderItem(BaseModel):
@@ -56,13 +58,14 @@ class TaskOut(BaseModel):
     external_source: str | None = None
     external_id: str | None = None
     external_url: str | None = None
+    depends_on: list[str] = []
     tags: list[TagOut] = []
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
 
-    @field_validator("acceptance_criteria", mode="before")
+    @field_validator("acceptance_criteria", "depends_on", mode="before")
     @classmethod
     def _none_as_empty(cls, v):
         return v or []

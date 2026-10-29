@@ -50,6 +50,9 @@ class Task(BaseModel):
     external_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
     external_id: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
     external_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Task graph: ids of tasks in the same project that must be done before
+    # this one is queued (services/task_graph.py)
+    depends_on: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     project = relationship("Project", back_populates="tasks")
     tags = relationship("Tag", secondary="task_tags", lazy="selectin")

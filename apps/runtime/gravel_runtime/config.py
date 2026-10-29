@@ -15,6 +15,8 @@ class RuntimeConfig(BaseSettings):
     opencode_command: str = "opencode"
     claude_command: str = "claude"
     claude_max_turns: int = 0  # 0 = no turn limit (the 60-minute timeout still applies)
+    claude_subagents: bool = True  # pass the bundle's subagents (.gravel/claude/agents.json)
+    claude_test_gate: bool = True  # run the project's tests before a code-writing run finishes
     github_token: str = ""
     dry_run: bool = False
 

@@ -24,7 +24,7 @@ from models.sdlc import OpenQuestion, QuestionStatus
 from models.task import Task, TaskStatus
 from models.task_run import TaskComment, TaskRun, TaskRunLog, TaskRunOutcome, TaskRunPhase
 from models.user import User
-from services import orchestrator, sdlc
+from services import orchestrator, sdlc, task_graph
 from services.llm import LLMRefusal, LLMResult, call_llm, pick_provider, resolve_model
 from services.token_usage import record_usage
 from services.users import get_plain_keys
@@ -48,14 +48,13 @@ async def run_agent(project_id: str, user_id: str) -> None:
         if not project:
             return
 
-        pending = [t for t in project.tasks if t.status == TaskStatus.pending]
+        # Task graph: only tasks whose dependencies are done start now; the
+        # rest are queued as their dependencies finish (services/task_graph.py)
+        tasks = {t.id: t for t in project.tasks}
+        pending = [t for t in project.tasks if t.status == TaskStatus.pending and task_graph.is_ready(t, tasks)]
         pending.sort(key=lambda t: ({"high": 0, "medium": 1, "low": 2}[t.priority.value], t.position))
-        stages = await orchestrator.ordered_stages(db, project.workflow_id) if project.workflow_id else []
         for task in pending:
-            if stages:
-                await orchestrator.enter_stage(db, task, stages[0], stages)
-            else:
-                await orchestrator.create_phase_run(db, task, TaskRunPhase.grooming)
+            await task_graph.queue_task(db, task, project)
         await db.commit()
 
         runtimes_active = await orchestrator.has_active_runtimes(db, project.organization_id)

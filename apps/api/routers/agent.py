@@ -4,12 +4,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dependencies import DB, CurrentOrg, CurrentUser, get_current_runtime, get_db
+from models.code_graph import CodeGraphStatus
 from models.engineer import Engineer, EngineerRuntime
 from models.task import Task, TaskPriority, TaskStatus, TaskType
 from models.task_run import TaskComment
 from schemas.task_run import PollResponse
 from services import agent as agent_svc
-from services import orchestrator, sdlc
+from services import code_graph, orchestrator, sdlc, subagents, task_graph
 from services.llm import provider_for_model, resolve_model
 from services.parser import parse_prd
 from services.projects import get_project
@@ -61,6 +62,12 @@ async def poll_next_task(
         task, project, engineer, comments, run.phase, stage=stage, stage_position=stage_position
     )
     bundle.update(await sdlc.bundle_files(db, task, project))
+    # The graph inside the run: subagents and the test gate (Claude Code executor)
+    graph = await code_graph.get_for_project(db, project.id)
+    bundle.update(subagents.bundle_files(
+        subagents.role_for(stage.role if stage else None, run.phase.value),
+        graph.graph if graph is not None and graph.status == CodeGraphStatus.ready else None,
+    ))
     model = resolve_model(stage, engineer, project)
     return PollResponse(
         task_run=run, task=task, project=project, bundle=bundle, workflow_stage=poll_stage,
@@ -102,6 +109,7 @@ async def parse_prd_endpoint(body: ParseRequest, current_user: CurrentUser, org:
     await db.execute(
         delete(Task).where(Task.project_id == body.project_id, Task.status == TaskStatus.pending)
     )
+    created: list[Task] = []
     for i, t in enumerate(raw_tasks):
         try:
             priority = TaskPriority(t.get("priority", "medium"))
@@ -123,7 +131,10 @@ async def parse_prd_endpoint(body: ParseRequest, current_user: CurrentUser, org:
             acceptance_criteria=merge_ai_criteria(None, criteria) if criteria else None,
         )
         db.add(task)
+        created.append(task)
 
+    await db.flush()
+    task_graph.link_by_index(created, raw_tasks)
     await db.flush()
     return ParseResponse(tasks=raw_tasks)
 

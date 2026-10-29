@@ -20,8 +20,9 @@ DOC_KINDS = {"analysis", "spec", "plan", "scenarios", "review", "verification", 
 SYSTEM_INSTRUCTIONS = """You are an autonomous software engineer working on the task described in .gravel/.
 
 Read .gravel/TASK.md, .gravel/STAGE_INSTRUCTIONS.md, .gravel/COMMENTS.md, .gravel/PROJECT_CONTEXT.md,
-.gravel/QUESTIONS.md and .gravel/KNOWLEDGE.md, plus any earlier stage documents under .gravel/docs/.
-Then do the work STAGE_INSTRUCTIONS.md describes. Never invent requirements: anything you cannot
+.gravel/QUESTIONS.md and .gravel/KNOWLEDGE.md, plus .gravel/CODE_MAP.md (a map of the repository) and
+.gravel/SUBAGENTS.md (subagents you can delegate to) when present, and any earlier stage documents
+under .gravel/docs/. Then do the work STAGE_INSTRUCTIONS.md describes. Never invent requirements: anything you cannot
 decide from this material is an open question with an owner.
 
 Report your result exactly as .gravel/OUTPUT_CONTRACT.md describes: write .gravel/output/result.json
@@ -115,6 +116,19 @@ def run_opencode(workspace: Path, provider: str, model: str) -> dict:
     return collect_outputs(workspace, parsed or {"outcome_type": "failed", "summary": ""})
 
 
+def claude_graph_args(workspace: Path) -> list[str]:
+    """Subagents (--agents) and the test-gate Stop hook (--settings) from the bundle."""
+    base = workspace / ".gravel" / "claude"
+    args: list[str] = []
+    agents = base / "agents.json"
+    if config.claude_subagents and agents.exists():
+        args += ["--agents", agents.read_text()]
+    settings = base / "settings.json"
+    if config.claude_test_gate and settings.exists():
+        args += ["--settings", str(settings)]
+    return args
+
+
 def run_claude_code(workspace: Path, provider: str, model: str) -> dict:
     if config.dry_run:
         return {"outcome_type": "needs_human_input", "summary": "Dry run — no work executed.",
@@ -129,6 +143,7 @@ def run_claude_code(workspace: Path, provider: str, model: str) -> dict:
     ]
     if config.claude_max_turns > 0:
         cmd += ["--max-turns", str(config.claude_max_turns)]
+    cmd += claude_graph_args(workspace)
     # The container runs as root, where Claude Code only skips permission
     # prompts once told it is inside a sandbox
     env = {**os.environ, "IS_SANDBOX": "1"}

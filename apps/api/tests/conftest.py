@@ -9,6 +9,7 @@ os.environ["REDIS_URL"] = ""
 os.environ["SECRET_KEY"] = "test-secret-key"
 os.environ["ENCRYPTION_KEY"] = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 os.environ["RUNTIME_MODE"] = "simulated"
+os.environ["CODE_GRAPH_AUTO_BUILD"] = "false"  # never reach GitHub from tests
 os.environ["UPLOAD_DIR"] = tempfile.mkdtemp(prefix="gravel-test-uploads-")
 
 import pytest

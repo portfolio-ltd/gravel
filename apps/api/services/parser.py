@@ -1,6 +1,7 @@
 """
 PRD parser: reads PRD text and calls LLM to extract a structured task list.
-Returns (list of {title, description, priority, type} dicts, LLMResult | None).
+Returns (list of {title, description, priority, type, acceptance_criteria,
+depends_on} dicts, LLMResult | None); depends_on holds 1-based positions.
 """
 import json
 import logging
@@ -20,13 +21,17 @@ Return ONLY a valid JSON array (no markdown fences, no extra text) in this forma
     "description": "What needs to be built/done (1-3 sentences)",
     "priority": "high|medium|low",
     "type": "feature|bug|design|infra",
-    "acceptance_criteria": ["Testable Given/When/Then-style statement", "..."]
+    "acceptance_criteria": ["Testable Given/When/Then-style statement", "..."],
+    "depends_on": [1]
   }}
 ]
 
 Aim for 5–15 tasks. Prioritize by impact. Give each task 2–4 acceptance
 criteria taken from the PRD; leave the list empty rather than inventing
-criteria the PRD doesn't support.
+criteria the PRD doesn't support. `depends_on` lists the 1-based positions
+of tasks in this array that must be finished first; add an edge only when
+the work truly cannot start without it, so independent tasks can run in
+parallel. Never create a cycle.
 
 PRD content:
 ---
@@ -94,10 +99,10 @@ def _fallback_tasks() -> list[dict]:
     return [
         {"title": "Setup project structure & CI/CD pipeline", "description": "Initialize repo, configure linting and test pipeline.", "priority": "high", "type": "infra"},
         {"title": "Design system & component library", "description": "Create base button, input, card, modal components.", "priority": "high", "type": "design"},
-        {"title": "Authentication (JWT + refresh tokens)", "description": "Implement login, logout, refresh token rotation.", "priority": "high", "type": "feature"},
-        {"title": "Dashboard layout & navigation", "description": "Responsive sidebar and top nav.", "priority": "high", "type": "feature"},
-        {"title": "User profile management", "description": "Edit profile, avatar upload, role display.", "priority": "medium", "type": "feature"},
-        {"title": "Notification system", "description": "In-app toast notifications.", "priority": "medium", "type": "feature"},
-        {"title": "Database schema & migrations", "description": "Users, projects, tasks tables with Alembic.", "priority": "high", "type": "infra"},
-        {"title": "API rate limiting & security middleware", "description": "Add slowapi rate limits and CORS headers.", "priority": "low", "type": "infra"},
+        {"title": "Authentication (JWT + refresh tokens)", "description": "Implement login, logout, refresh token rotation.", "priority": "high", "type": "feature", "depends_on": [7]},
+        {"title": "Dashboard layout & navigation", "description": "Responsive sidebar and top nav.", "priority": "high", "type": "feature", "depends_on": [2]},
+        {"title": "User profile management", "description": "Edit profile, avatar upload, role display.", "priority": "medium", "type": "feature", "depends_on": [3, 4]},
+        {"title": "Notification system", "description": "In-app toast notifications.", "priority": "medium", "type": "feature", "depends_on": [2]},
+        {"title": "Database schema & migrations", "description": "Users, projects, tasks tables with Alembic.", "priority": "high", "type": "infra", "depends_on": [1]},
+        {"title": "API rate limiting & security middleware", "description": "Add slowapi rate limits and CORS headers.", "priority": "low", "type": "infra", "depends_on": [3]},
     ]
