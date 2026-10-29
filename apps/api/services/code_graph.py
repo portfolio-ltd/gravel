@@ -66,6 +66,7 @@ MANIFESTS = {
 
 MAX_FILE_BYTES = 400_000
 MAX_FILES = 25_000
+MAX_TOTAL_BYTES = 80_000_000  # text kept in memory across all files
 
 
 @dataclass
@@ -92,6 +93,7 @@ def read_tarball(data: bytes) -> tuple[list[str], dict[str, str]]:
     """(all paths, wanted files) from a GitHub tarball; the top-level <owner>-<repo>-<sha>/ dir is stripped."""
     paths: list[str] = []
     files: dict[str, str] = {}
+    kept = 0
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
         for member in tar:
             if not member.isfile() or "/" not in member.name:
@@ -100,13 +102,15 @@ def read_tarball(data: bytes) -> tuple[list[str], dict[str, str]]:
             if not path or _skipped(path):
                 continue
             paths.append(path)
-            if len(files) >= MAX_FILES or member.size > MAX_FILE_BYTES or not _wanted(path):
+            if len(files) >= MAX_FILES or member.size > MAX_FILE_BYTES or kept + member.size > MAX_TOTAL_BYTES \
+                    or not _wanted(path):
                 continue
             handle = tar.extractfile(member)
             raw = handle.read() if handle else b""
             if b"\x00" in raw[:4096]:
                 continue  # binary
             files[path] = raw.decode("utf-8", errors="ignore")
+            kept += len(raw)
     return paths, files
 
 

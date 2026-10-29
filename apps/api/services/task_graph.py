@@ -86,11 +86,10 @@ async def queue_task(db: AsyncSession, task: Task, project: Project) -> bool:
     from models.task_run import TaskRunPhase
     from services import orchestrator
 
-    if project.workflow_id:
-        stages = await orchestrator.ordered_stages(db, project.workflow_id)
-        if not stages:
-            return False
+    stages = await orchestrator.ordered_stages(db, project.workflow_id) if project.workflow_id else []
+    if stages:
         return await orchestrator.enter_stage(db, task, stages[0], stages) is not None
+    # No workflow (or an empty one): the default phase pipeline
     return await orchestrator.create_phase_run(db, task, TaskRunPhase.grooming) is not None
 
 
