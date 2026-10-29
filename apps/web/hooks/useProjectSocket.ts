@@ -36,6 +36,7 @@ export function useProjectSocket(projectId: string | null) {
           qc.invalidateQueries({ queryKey: ["tasks", projectId] })
           qc.invalidateQueries({ queryKey: ["project", projectId] })
           qc.invalidateQueries({ queryKey: ["knowledge"] })
+          qc.invalidateQueries({ queryKey: ["knowledge-map"] })
           break
         case "tasks.imported":
           qc.invalidateQueries({ queryKey: ["tasks", projectId] })

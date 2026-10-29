@@ -5,9 +5,11 @@
 - OpenQuestion   — an unresolved decision with a named owner. Blocking
                    questions hold back stages configured to wait for answers.
 - KnowledgeEntry — project/org memory every engineer run is grounded in:
-                   decision records, patterns, glossary terms, runbooks and
-                   conventions. AI runs may only *propose* entries; a human
-                   accepts them.
+                   decision records, patterns, glossary terms, runbooks,
+                   conventions and wiki pages. AI runs may only *propose*
+                   entries; a human accepts them. Entries link to each other
+                   with [[wikilinks]] (services/knowledge_graph.py), which is
+                   what the knowledge map draws.
 """
 import enum
 from datetime import datetime
@@ -43,6 +45,7 @@ class KnowledgeKind(str, enum.Enum):
     glossary = "glossary"      # domain term and its meaning
     runbook = "runbook"        # operational procedure
     convention = "convention"  # coding / repo / review convention
+    wiki = "wiki"              # free-form page; links to other entries with [[wikilinks]]
 
 
 class KnowledgeStatus(str, enum.Enum):
@@ -127,4 +130,11 @@ class KnowledgeEntry(BaseModel):
     )
     source_task_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
+    )
+    # Stable, URL-safe name unique per org: what [[wikilinks]] and the
+    # Obsidian export use. Derived from the title on creation.
+    slug: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
+    # Wiki hierarchy: the page this one sits under (any kind may have a parent)
+    parent_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("knowledge_entries.id", ondelete="SET NULL"), nullable=True
     )

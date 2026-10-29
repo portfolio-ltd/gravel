@@ -11,6 +11,7 @@ from models.task_run import TaskComment
 from schemas.task_run import PollResponse
 from services import agent as agent_svc
 from services import code_graph, orchestrator, sdlc, subagents, task_graph
+from services import harness as harness_svc
 from services.llm import provider_for_model, resolve_model
 from services.parser import parse_prd
 from services.projects import get_project
@@ -62,12 +63,22 @@ async def poll_next_task(
         task, project, engineer, comments, run.phase, stage=stage, stage_position=stage_position
     )
     bundle.update(await sdlc.bundle_files(db, task, project))
-    # The graph inside the run: subagents and the test gate (Claude Code executor)
+    # The graph inside the run: the harness decides subagents, routing, the
+    # test gate and executor limits (stage → org default → built-in)
     graph = await code_graph.get_for_project(db, project.id)
+    harness = await harness_svc.resolve(db, stage, project.organization_id)
+    role = subagents.role_for(stage.role if stage else None, run.phase.value)
     bundle.update(subagents.bundle_files(
-        subagents.role_for(stage.role if stage else None, run.phase.value),
-        graph.graph if graph is not None and graph.status == CodeGraphStatus.ready else None,
+        role, graph.graph if graph is not None and graph.status == CodeGraphStatus.ready else None, harness,
     ))
+    if harness is not None:
+        run.harness_id = harness.id
+        if harness.instructions_markdown and harness.instructions_markdown.strip():
+            bundle["STAGE_INSTRUCTIONS.md"] = (
+                bundle["STAGE_INSTRUCTIONS.md"].rstrip() + "\n\n## Harness instructions\n\n"
+                + harness.instructions_markdown.strip() + "\n"
+            )
+        await db.flush()
     model = resolve_model(stage, engineer, project)
     return PollResponse(
         task_run=run, task=task, project=project, bundle=bundle, workflow_stage=poll_stage,

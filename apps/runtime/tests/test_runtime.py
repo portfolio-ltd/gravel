@@ -220,3 +220,30 @@ def test_claude_code_passes_bundle_subagents_and_test_gate(claude_code, monkeypa
     monkeypatch.setattr(config, "claude_test_gate", False)
     executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
     assert "--agents" not in claude_code["cmd"] and "--settings" not in claude_code["cmd"]
+
+
+def test_claude_code_applies_the_harness_limits(claude_code, monkeypatch, tmp_path: Path):
+    claude_code["stdout"] = _claude_envelope('{"outcome": "completed", "summary": "s"}')
+    bundle = tmp_path / ".gravel"
+    bundle.mkdir(parents=True)
+    (bundle / "harness.json").write_text(json.dumps({
+        "name": "Read-only analysis", "max_turns": 60,
+        "allowed_tools": [], "disallowed_tools": ["Edit", "Write"],
+    }))
+    executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
+    cmd = claude_code["cmd"]
+    assert cmd[cmd.index("--max-turns") + 1] == "60"
+    assert cmd[cmd.index("--disallowedTools") + 1] == "Edit,Write" and "--allowedTools" not in cmd
+    assert cmd.count("--max-turns") == 1
+
+    # The runtime's own, lower limit is the ceiling
+    monkeypatch.setattr(config, "claude_max_turns", 20)
+    executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
+    cmd = claude_code["cmd"]
+    assert cmd[cmd.index("--max-turns") + 1] == "20" and cmd.count("--max-turns") == 1
+
+    # A broken harness file is ignored, not fatal
+    (bundle / "harness.json").write_text("{not json")
+    monkeypatch.setattr(config, "claude_max_turns", 0)
+    executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
+    assert "--max-turns" not in claude_code["cmd"] and executor.read_harness(tmp_path) == {}

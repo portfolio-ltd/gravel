@@ -296,7 +296,8 @@ def test_subagent_bundle_per_role():
     compile(build["claude/test_gate.py"], "test_gate.py", "exec")
 
     assert "claude/settings.json" not in subagents.bundle_files("build", None)  # no commands known
-    assert subagents.bundle_files("deploy", graph) == {}
+    deploy = subagents.bundle_files("deploy", graph)  # no subagents, no gate — only the harness record
+    assert set(deploy) == {"HARNESS.md", "harness.json"}
     assert subagents.role_for(None, "testing") == "verify" and subagents.role_for("mystery", None) == "custom"
 
 

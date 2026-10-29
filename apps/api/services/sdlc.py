@@ -41,8 +41,9 @@ from models.task_run import CommentAuthorType
 
 _GROUNDING = (
     "Ground your work in .gravel/KNOWLEDGE.md (accepted decision records, patterns, "
-    "glossary, runbooks, conventions), in .gravel/CODE_MAP.md when present (the "
-    "repository's modules, how they depend on each other, and its commands), and in "
+    "glossary, runbooks, conventions, wiki pages), in .gravel/CODE_MAP.md when present (the "
+    "repository's modules, how they depend on each other, and its commands), in .gravel/LINKS.md "
+    "when present (designs, tickets and external specs this work refers to), and in "
     "the documents earlier stages produced under .gravel/docs/. Use the glossary's terms. If you discover something the "
     "next engineer should not have to rediscover — a decision, a reusable pattern, "
     "a domain term, an operational gotcha — propose it as a knowledge entry "
@@ -478,10 +479,12 @@ async def apply_artifacts(db: AsyncSession, task: Task, project: Project, artifa
         ))).scalar_one_or_none()
         if dup:
             continue
+        from services.knowledge_graph import unique_slug
         db.add(KnowledgeEntry(
             id=new_uuid(), organization_id=project.organization_id, project_id=project.id,
             kind=kind, title=title[:300], body_markdown=body, status=KnowledgeStatus.proposed,
             author_type=CommentAuthorType.ai, source_task_id=task.id,
+            slug=await unique_slug(db, project.organization_id, title[:300]),
         ))
     await db.flush()
 
@@ -548,19 +551,42 @@ def knowledge_label(entry: KnowledgeEntry) -> str:
 
 
 def render_knowledge(entries: list[KnowledgeEntry]) -> str:
+    """Accepted knowledge as one markdown document. [[wikilinks]] become plain
+    text (agents cannot follow them); the Obsidian export keeps them."""
+    from services.knowledge_graph import Resolver, flatten_wikilinks
     if not entries:
         return "# Project knowledge\n\nNo accepted knowledge yet.\n"
     headings = {
         KnowledgeKind.decision: "Decision records", KnowledgeKind.pattern: "Patterns",
         KnowledgeKind.glossary: "Glossary", KnowledgeKind.runbook: "Runbooks",
-        KnowledgeKind.convention: "Conventions",
+        KnowledgeKind.convention: "Conventions", KnowledgeKind.wiki: "Wiki",
     }
+    resolver = Resolver(entries)
     out = ["# Project knowledge"]
     for kind, heading in headings.items():
         group = [e for e in entries if e.kind == kind]
         if group:
             out.append(f"\n## {heading}")
-            out += [f"\n### {knowledge_label(e)}\n\n{e.body_markdown.strip()}" for e in group]
+            out += [f"\n### {knowledge_label(e)}\n\n{flatten_wikilinks(e.body_markdown.strip(), resolver)}"
+                    for e in group]
+    return "\n".join(out) + "\n"
+
+
+def render_links(links: list, task_title: str | None = None) -> str:
+    """External links for the project and the task, grouped by what they hang off."""
+    if not links:
+        return "# Links\n\nNo external links recorded.\n"
+    out = ["# Links", "", "Where the rest of this work lives. Open these before guessing at designs, tickets "
+           "or external specs."]
+    for scope, label in (("project", "Project"), ("task", f"Task: {task_title}" if task_title else "Task")):
+        group = [link for link in links if link.entity_type.value == scope]
+        if group:
+            out.append(f"\n## {label}")
+            for link in group:
+                line = f"- [{link.title}]({link.url}) — {link.kind.value}"
+                if link.description:
+                    line += f": {link.description.strip()}"
+                out.append(line)
     return "\n".join(out) + "\n"
 
 
@@ -601,6 +627,14 @@ async def bundle_files(db: AsyncSession, task: Task, project: Project) -> dict[s
         "QUESTIONS.md": render_questions(questions),
         "OUTPUT_CONTRACT.md": OUTPUT_CONTRACT_MD,
     }
+    from models.link import ExternalLink, LinkEntityType
+    links = list((await db.execute(select(ExternalLink).where(
+        ExternalLink.organization_id == (project.organization_id or ""),
+        ((ExternalLink.entity_type == LinkEntityType.project) & (ExternalLink.entity_id == project.id))
+        | ((ExternalLink.entity_type == LinkEntityType.task) & (ExternalLink.entity_id == task.id)),
+    ).order_by(ExternalLink.kind, ExternalLink.title))).scalars())
+    if links:
+        files["LINKS.md"] = render_links(links, task.title)
     from models.code_graph import CodeGraphStatus
     from services.code_graph import get_for_project, render_for_task
     graph = await get_for_project(db, project.id)

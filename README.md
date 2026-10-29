@@ -35,8 +35,9 @@ already trust:
   compares the diff with the plan, the project's recorded decisions and the
   acceptance criteria — and sends the task back to build when it falls short.
 - **Project knowledge grounds every run.** Decision records, patterns, glossary
-  terms, runbooks and conventions are handed to every engineer run. Runs may
-  *propose* new knowledge; humans accept it.
+  terms, runbooks, conventions and wiki pages are handed to every engineer
+  run, with the external links (designs, tickets, dashboards, specs) attached
+  to the project and task. Runs may *propose* new knowledge; humans accept it.
 - **Humans approve at the gates you choose.** Every gate shows up on the
   Attention page, the board and the task, with Approve / Request changes.
 
@@ -74,7 +75,9 @@ Workflows are fully editable. Three templates ship built in:
 - **Plan, build, review** — a lighter loop for well-specified work.
 - **Groom, build, test, deploy** — the classic four-phase pipeline.
 
-See [docs/methodology.md](docs/methodology.md) for the full method.
+See [docs/methodology.md](docs/methodology.md) for the full method,
+[docs/knowledge-map.md](docs/knowledge-map.md) for wikilinks, the map and the
+Obsidian export, and [docs/harnesses.md](docs/harnesses.md) for agent harnesses.
 
 ### Graph engineering
 
@@ -99,6 +102,21 @@ its own judgment:
   subagents for its role (explorer, implementers in parallel, test runner,
   fresh-context reviewer) and a test gate that runs the project's tests before
   a code-writing run may finish.
+- **Knowledge map** — knowledge entries link to each other with
+  `[[wikilinks]]`; the Map page draws them with the projects, tasks, PRDs,
+  external links and code modules they touch, Obsidian-style (local graph,
+  backlinks, unresolved links you can create in one click). Export the lot as
+  an Obsidian vault, or import a folder of notes.
+
+### Agent harnesses
+
+How a run is wrapped is editable: a **harness** names the subagents a run may
+delegate to, how work is routed between them per stage role, whether the
+project's tests gate the run, the review-round stop rule, and the executor's
+turn and tool limits. Built-in templates (spec-driven, solo, parallel build,
+review-heavy, read-only analysis) can be copied and edited; an organization
+picks a default and any workflow stage can pin a different one. See
+[docs/harnesses.md](docs/harnesses.md).
 
 ### Who does the work
 
@@ -125,6 +143,8 @@ ledger with cost estimates per task, project, PRD and org.
   idempotently, and optionally post each stage's result back to the issue.
 - **PRDs** — markdown PRDs with an AI chat that proposes edits, and AI task
   splitting into any project.
+- **External links** — attach designs, tickets, dashboards and specs to
+  projects, tasks, PRDs and knowledge entries; runs get them as `LINKS.md`.
 - **Organizations** — real multi-tenant teams, roles, tags.
 - **Customizable UI** — light/dark/system theme, accent color, density, radius,
   font, sidebar or top-bar navigation, board card fields; preferences follow
@@ -222,6 +242,7 @@ Report vulnerabilities privately — see [SECURITY.md](SECURITY.md).
 - Per-stage budgets
 - More runtime executors (other agent CLIs)
 - Plugin points for custom stage roles
+- Two-way Obsidian sync (watch a vault folder)
 
 ## Contributing
 

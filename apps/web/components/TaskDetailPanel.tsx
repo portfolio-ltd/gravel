@@ -19,6 +19,8 @@ import QuestionsPanel from "@/components/sdlc/QuestionsPanel"
 import DocumentsPanel from "@/components/sdlc/DocumentsPanel"
 import ActivityPanel from "@/components/sdlc/ActivityPanel"
 import DiscussionPanel from "@/components/sdlc/DiscussionPanel"
+import LinksPanel from "@/components/LinksPanel"
+import { useLinks } from "@/hooks/useLinks"
 import { isGated, issueRef, OUTCOME_META, PRIORITY_TONE, STATUS_LABELS } from "@/components/sdlc/meta"
 import { cn } from "@/lib/utils"
 
@@ -53,6 +55,7 @@ export default function TaskDetailPanel({ task: initialTask, onClose }: Props) {
   const { data: runs } = useTaskRuns(task.id)
   const { data: questions } = useTaskQuestions(task.id)
   const { data: documents } = useTaskDocuments(task.id)
+  const { data: links } = useLinks("task", task.id)
   const setTaskTags = useSetTaskTags()
   const [tab, setTab] = useState("overview")
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -205,6 +208,9 @@ export default function TaskDetailPanel({ task: initialTask, onClose }: Props) {
                 Activity <Count n={runs?.length ?? 0} />
               </TabsTrigger>
               <TabsTrigger value="discussion" className={TAB_TRIGGER}>Discussion</TabsTrigger>
+              <TabsTrigger value="links" className={TAB_TRIGGER}>
+                Links <Count n={links?.length ?? 0} />
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6 pb-8 pt-3">
@@ -226,6 +232,10 @@ export default function TaskDetailPanel({ task: initialTask, onClose }: Props) {
             </TabsContent>
             <TabsContent value="discussion" className="pb-8 pt-3">
               <DiscussionPanel taskId={task.id} />
+            </TabsContent>
+            <TabsContent value="links" className="pb-8 pt-3">
+              <LinksPanel entityType="task" entityId={task.id} title="External links"
+                hint="Designs, tickets, dashboards and specs for this task. Engineer runs get them, with the project's links, as LINKS.md." />
             </TabsContent>
           </Tabs>
         </div>

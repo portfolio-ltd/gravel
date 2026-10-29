@@ -16,6 +16,7 @@ class WorkflowStageCreate(BaseModel):
     max_rework_attempts: int = 3
     rework_target_stage_id: str | None = None
     next_stage_id: str | None = None  # None → the next stage by order
+    harness_id: str | None = None  # None → the org default harness, then the built-in one
 
 
 class WorkflowStageUpdate(BaseModel):
@@ -31,6 +32,7 @@ class WorkflowStageUpdate(BaseModel):
     max_rework_attempts: int | None = None
     rework_target_stage_id: str | None = None
     next_stage_id: str | None = None
+    harness_id: str | None = None
 
 
 class WorkflowStageOut(BaseModel):
@@ -48,6 +50,7 @@ class WorkflowStageOut(BaseModel):
     max_rework_attempts: int
     rework_target_stage_id: str | None
     next_stage_id: str | None = None
+    harness_id: str | None = None
     created_at: datetime
     updated_at: datetime
 

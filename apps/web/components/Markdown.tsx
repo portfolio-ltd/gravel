@@ -1,12 +1,15 @@
 "use client"
 
+import Link from "next/link"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/lib/utils"
+import { rewriteWikilinks } from "@/lib/wikilinks"
 
 /**
  * Renders untrusted markdown (AI output, issue bodies) safely: react-markdown
- * never injects raw HTML, and links open in a new tab without referrer.
+ * never injects raw HTML, external links open in a new tab without referrer,
+ * and [[wikilinks]] become in-app links to the knowledge base.
  */
 export default function Markdown({ children, className }: { children: string; className?: string }) {
   return (
@@ -14,12 +17,16 @@ export default function Markdown({ children, className }: { children: string; cl
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noopener noreferrer nofollow">{children}</a>
-          ),
+          a: ({ href, children }) => {
+            if (href?.startsWith("/")) {
+              const wiki = href.startsWith("/knowledge/by-slug/")
+              return <Link href={href} className={wiki ? "wikilink" : undefined}>{children}</Link>
+            }
+            return <a href={href} target="_blank" rel="noopener noreferrer nofollow">{children}</a>
+          },
         }}
       >
-        {children}
+        {rewriteWikilinks(children)}
       </ReactMarkdown>
     </div>
   )

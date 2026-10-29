@@ -90,12 +90,19 @@ are ignored.
   STAGE_INSTRUCTIONS.md   stage name, role, instructions (+ grounding guidance)
   COMMENTS.md             the task's comment thread
   PROJECT_CONTEXT.md      repo, branches, resolved model, engineer skills
-  KNOWLEDGE.md            accepted decisions, patterns, glossary, runbooks, conventions
+  KNOWLEDGE.md            accepted decisions, patterns, glossary, runbooks, conventions,
+                          wiki pages ([[wikilinks]] flattened to text)
+  LINKS.md                the project's and the task's external links (designs, tickets,
+                          dashboards, specs), when any exist
   QUESTIONS.md            open / answered / deferred questions with ids
   CODE_MAP.md             the repository's code graph: overview, stack, commands, the
                           modules this task likely touches and the decisions that
                           mention them (when the project has a mapped repo)
   SUBAGENTS.md            the subagents this run can delegate to, and how to route work
+  HARNESS.md              the agent harness that wrapped the run: its limits and extra
+                          instructions (docs/harnesses.md)
+  harness.json            executor settings from the harness: max_turns, allowed_tools,
+                          disallowed_tools, test_gate, max_review_rounds
   claude/agents.json      subagent definitions for the stage's role (`claude --agents`)
   claude/settings.json    test-gate Stop hook (`claude --settings`), code-writing runs only
   claude/test_gate.py     the hook: runs the project's test commands once before the
@@ -110,10 +117,13 @@ are ignored.
   output/                 the engineer writes its result here
 ```
 
-Only the Claude Code executor uses `claude/`; set `GRAVEL_CLAUDE_SUBAGENTS=false`
-or `GRAVEL_CLAUDE_TEST_GATE=false` on the runtime to turn either off. The gate
-blocks at most once per run (it lets the run finish when it is already
-continuing because of the gate) and skips commands whose tool isn't installed.
+Only the Claude Code executor uses `claude/` and `harness.json`; set
+`GRAVEL_CLAUDE_SUBAGENTS=false` or `GRAVEL_CLAUDE_TEST_GATE=false` on the
+runtime to turn either off. A harness's turn limit applies as `--max-turns`
+unless the runtime's own `GRAVEL_CLAUDE_MAX_TURNS` is lower; its tool lists
+become `--allowedTools` / `--disallowedTools`. The gate blocks at most once per
+run (it lets the run finish when it is already continuing because of the gate)
+and skips commands whose tool isn't installed.
 
 ### Reporting from the workspace
 

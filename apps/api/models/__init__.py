@@ -1,7 +1,9 @@
 from .changelog import ChangelogEntry, ChangelogType
 from .code_graph import CodeGraph, CodeGraphStatus
 from .engineer import Engineer, EngineerRuntime, EngineerStatus
+from .harness import AgentHarness
 from .integration import DeployEnvironment, DeployProvider, GitIntegration, GitProvider
+from .link import ExternalLink, LinkEntityType, LinkKind
 from .organization import Organization, OrganizationMember, OrgRole
 from .prd import PRD, PRDComment, PRDStatus
 from .project import Project, ProjectDesignFile, ProjectStatus
@@ -50,4 +52,6 @@ __all__ = [
     "TaskDocument", "DocumentKind", "OpenQuestion", "QuestionStatus",
     "KnowledgeEntry", "KnowledgeKind", "KnowledgeStatus",
     "CodeGraph", "CodeGraphStatus",
+    "AgentHarness",
+    "ExternalLink", "LinkEntityType", "LinkKind",
 ]
