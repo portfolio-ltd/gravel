@@ -323,7 +323,9 @@ async def export_vault(db: AsyncSession, organization_id: str, project_id: str |
                 "gravel_id": e.id, "kind": e.kind.value, "status": e.status.value,
                 "number": e.number, "project": projects[e.project_id].name if e.project_id in projects else None,
                 "parent": by_id[e.parent_id].slug if e.parent_id in by_id else None,
-                "aliases": [e.slug] if e.slug and _key(e.slug) != _key(e.title) else [],
+                # Obsidian resolves [[Title]] through aliases when the file name had to be sanitised
+                "aliases": [a for a in (e.title if _safe_name(e.title) != e.title else None,
+                                        e.slug if e.slug and _key(e.slug) != _key(e.title) else None) if a],
                 "tags": ["gravel", e.kind.value],
                 "updated": e.updated_at.isoformat() if e.updated_at else None,
             })
@@ -380,8 +382,18 @@ async def export_vault(db: AsyncSession, organization_id: str, project_id: str |
     return buf.getvalue()
 
 
+NON_KNOWLEDGE_TYPES = {"task", "prd", "project"}
+NON_KNOWLEDGE_FOLDERS = {"tasks", "prds", "projects"}
+
+
 def parse_markdown_note(filename: str, content: str) -> dict:
-    """A markdown note (optionally with YAML-ish front matter) → fields for a knowledge entry."""
+    """A markdown note (optionally with YAML-ish front matter) → fields for a knowledge entry.
+
+    `kind_explicit` says whether the note named its kind (front matter or an
+    export folder); an import only changes an existing entry's kind when it
+    did. `skip` marks notes the vault export writes that are not knowledge
+    (tasks, PRDs, projects, the README).
+    """
     meta: dict = {}
     body = content
     m = FRONTMATTER_RE.match(content)
@@ -398,16 +410,21 @@ def parse_markdown_note(filename: str, content: str) -> dict:
         body = body[heading.end():]
     if not title:
         title = re.sub(r"\.(md|markdown)$", "", filename.rsplit("/", 1)[-1], flags=re.IGNORECASE)
-    kind = meta.get("kind") or meta.get("type") or ""
+    kind = (meta.get("kind") or meta.get("type") or "").lower()
+    folders = [part.lower() for part in filename.split("/")[:-1]]
+    skip = kind in NON_KNOWLEDGE_TYPES or bool(folders and folders[0] in NON_KNOWLEDGE_FOLDERS) \
+        or (not folders and filename.lower() == "readme.md" and "gravel knowledge vault" in content.lower())
+    kind_explicit = True
     try:
         kind_value = KnowledgeKind(kind)
     except ValueError:
-        folder = filename.rsplit("/", 1)[0].lower() if "/" in filename else ""
-        kind_value = next((k for k, f in KIND_FOLDERS.items() if f.lower() == folder.rsplit("/", 1)[-1]),
-                          KnowledgeKind.wiki)
+        folder = folders[-1] if folders else ""
+        by_folder = next((k for k, f in KIND_FOLDERS.items() if f.lower() == folder), None)
+        kind_value, kind_explicit = (by_folder, True) if by_folder else (KnowledgeKind.wiki, False)
     try:
         status = KnowledgeStatus(meta.get("status") or "accepted")
     except ValueError:
         status = KnowledgeStatus.accepted
-    return {"title": title[:300], "body_markdown": body.strip(), "kind": kind_value, "status": status,
-            "gravel_id": meta.get("gravel_id"), "slug": meta.get("slug") or None, "parent": meta.get("parent")}
+    return {"title": title[:300], "body_markdown": body.strip(), "kind": kind_value, "kind_explicit": kind_explicit,
+            "status": status, "skip": skip, "gravel_id": meta.get("gravel_id"), "slug": meta.get("slug") or None,
+            "parent": meta.get("parent")}

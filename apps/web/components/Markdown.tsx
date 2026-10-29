@@ -18,7 +18,8 @@ export default function Markdown({ children, className }: { children: string; cl
         remarkPlugins={[remarkGfm]}
         components={{
           a: ({ href, children }) => {
-            if (href?.startsWith("/")) {
+            // "/x" is in-app; "//evil.example" is protocol-relative and external
+            if (href?.startsWith("/") && !href.startsWith("//")) {
               const wiki = href.startsWith("/knowledge/by-slug/")
               return <Link href={href} className={wiki ? "wikilink" : undefined}>{children}</Link>
             }

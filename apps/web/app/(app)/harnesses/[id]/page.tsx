@@ -134,6 +134,11 @@ export default function HarnessEditorPage() {
 
   async function save() {
     if (!draft) return
+    const empty = Object.entries(draft.agents).filter(([, a]) => !a.prompt.trim()).map(([n]) => n)
+    if (empty.length) {
+      toast.error(`Every subagent needs a prompt — missing for: ${empty.join(", ")}`)
+      return
+    }
     try {
       await update.mutateAsync({ id, ...draft })
       toast.success("Harness saved")

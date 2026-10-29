@@ -137,16 +137,24 @@ export default function ForceGraph({
     return { x: (clientX - rect.left - transform.x) / transform.k, y: (clientY - rect.top - transform.y) / transform.k }
   }, [transform])
 
-  function onWheel(e: React.WheelEvent) {
-    e.preventDefault()
-    const rect = svgRef.current!.getBoundingClientRect()
-    const px = e.clientX - rect.left, py = e.clientY - rect.top
-    const factor = Math.exp(-e.deltaY * 0.0015)
-    setTransform((t) => {
-      const k = Math.min(4, Math.max(0.15, t.k * factor))
-      return { k, x: px - ((px - t.x) / t.k) * k, y: py - ((py - t.y) / t.k) * k }
-    })
-  }
+  // React registers wheel listeners as passive, so preventDefault (keeping the
+  // page still while zooming) needs a native non-passive listener
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = svg.getBoundingClientRect()
+      const px = e.clientX - rect.left, py = e.clientY - rect.top
+      const factor = Math.exp(-e.deltaY * 0.0015)
+      setTransform((t) => {
+        const k = Math.min(4, Math.max(0.15, t.k * factor))
+        return { k, x: px - ((px - t.x) / t.k) * k, y: py - ((py - t.y) / t.k) * k }
+      })
+    }
+    svg.addEventListener("wheel", onWheel, { passive: false })
+    return () => svg.removeEventListener("wheel", onWheel)
+  }, [])
 
   function onPointerDown(e: React.PointerEvent, id: string | null) {
     e.stopPropagation()
@@ -195,7 +203,7 @@ export default function ForceGraph({
     <div className={cn("relative overflow-hidden rounded-lg border bg-muted/20", className)} style={{ height }}>
       <svg ref={svgRef} width={size.w} height={size.h} role="group" aria-label={ariaLabel}
         className="block cursor-grab touch-none select-none active:cursor-grabbing"
-        onWheel={onWheel} onPointerDown={(e) => onPointerDown(e, null)} onPointerMove={onPointerMove}
+        onPointerDown={(e) => onPointerDown(e, null)} onPointerMove={onPointerMove}
         onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
         <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
           {edges.map((e, i) => {

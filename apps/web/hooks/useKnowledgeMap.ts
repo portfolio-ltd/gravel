@@ -1,12 +1,8 @@
 "use client"
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { apiFetch, apiUpload } from "@/lib/api"
-import { getAccessToken } from "@/lib/auth"
-import { getActiveOrgId } from "@/lib/orgStore"
+import { apiDownload, apiFetch, apiUpload } from "@/lib/api"
 import type { KnowledgeEntry, KnowledgeImportResult, KnowledgeLinks, KnowledgeMap } from "@/types"
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 export function useKnowledgeMap(opts: { projectId?: string; tasks?: boolean; code?: boolean } = {}) {
   const params = new URLSearchParams()
@@ -52,20 +48,8 @@ export function useImportNotes() {
   })
 }
 
-/** Downloads the Obsidian vault zip through an authenticated fetch (no <a href> — the API needs headers). */
-export async function downloadVault(projectId?: string): Promise<void> {
-  const token = getAccessToken()
-  const orgId = getActiveOrgId()
+/** Downloads the Obsidian vault zip (authenticated, so not a plain link). */
+export function downloadVault(projectId?: string): Promise<void> {
   const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""
-  const res = await fetch(`${BASE}/api/knowledge/export/obsidian${qs}`, {
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(orgId ? { "X-Org-Id": orgId } : {}) },
-  })
-  if (!res.ok) throw new Error(res.status === 401 ? "Session expired — reload and try again" : `Export failed (${res.status})`)
-  const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "gravel-vault.zip"
-  const url = URL.createObjectURL(await res.blob())
-  const a = document.createElement("a")
-  a.href = url
-  a.download = name
-  a.click()
-  URL.revokeObjectURL(url)
+  return apiDownload(`/api/knowledge/export/obsidian${qs}`, "gravel-vault.zip")
 }

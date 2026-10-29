@@ -63,6 +63,7 @@ async def poll_next_task(
         task, project, engineer, comments, run.phase, stage=stage, stage_position=stage_position
     )
     bundle.update(await sdlc.bundle_files(db, task, project))
+    bundle = sdlc.flatten_bundle_wikilinks(bundle, await sdlc.accepted_knowledge(db, project))
     # The graph inside the run: the harness decides subagents, routing, the
     # test gate and executor limits (stage → org default → built-in)
     graph = await code_graph.get_for_project(db, project.id)

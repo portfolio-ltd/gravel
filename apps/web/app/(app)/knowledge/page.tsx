@@ -19,13 +19,11 @@ import { Input, Segmented } from "@/components/ui/form"
 import { EmptyState, Page, PageHeader } from "@/components/ui/page"
 import Markdown from "@/components/Markdown"
 import EntryEditor, { KIND_BY_KEY, KIND_STYLE, KINDS, type EditorState } from "@/components/knowledge/EntryEditor"
-import { getAccessToken } from "@/lib/auth"
-import { getActiveOrgId } from "@/lib/orgStore"
+import { apiDownload } from "@/lib/api"
 import { cn, formatRelativeTime } from "@/lib/utils"
 import type { KnowledgeEntry, KnowledgeKind, KnowledgeStatus } from "@/types"
 
 type StatusFilter = "accepted" | "deprecated" | "rejected" | "all"
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 function KindBadge({ kind }: { kind: KnowledgeKind }) {
   return (
@@ -222,18 +220,7 @@ function Knowledge() {
   async function exportMarkdown() {
     setExporting("md")
     try {
-      const token = getAccessToken()
-      const orgId = getActiveOrgId()
-      const res = await fetch(`${BASE}/api/knowledge/export`, {
-        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(orgId ? { "X-Org-Id": orgId } : {}) },
-      })
-      if (!res.ok) throw new Error(res.status === 401 ? "Session expired — reload and try again" : `Export failed (${res.status})`)
-      const url = URL.createObjectURL(await res.blob())
-      const a = document.createElement("a")
-      a.href = url
-      a.download = "KNOWLEDGE.md"
-      a.click()
-      URL.revokeObjectURL(url)
+      await apiDownload("/api/knowledge/export", "KNOWLEDGE.md")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export failed")
     } finally {

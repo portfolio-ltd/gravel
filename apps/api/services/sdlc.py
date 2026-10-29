@@ -505,6 +505,24 @@ def merge_ai_criteria(existing: list | None, proposed: list[str]) -> list[dict]:
     return merged
 
 
+async def assign_decision_number(db: AsyncSession, entry: KnowledgeEntry) -> None:
+    """Accepted decisions get the next DR number in their organization (once)."""
+    if entry.kind == KnowledgeKind.decision and entry.number is None and entry.status == KnowledgeStatus.accepted:
+        current = (await db.execute(select(func.max(KnowledgeEntry.number)).where(
+            KnowledgeEntry.organization_id == entry.organization_id, KnowledgeEntry.kind == KnowledgeKind.decision,
+        ))).scalar_one()
+        entry.number = (current or 0) + 1
+
+
+def flatten_bundle_wikilinks(files: dict[str, str], knowledge: list[KnowledgeEntry]) -> dict[str, str]:
+    """Agents cannot follow [[wikilinks]]: turn them into plain text in every markdown bundle file."""
+    from services.knowledge_graph import Resolver
+    from services.knowledge_graph import flatten_wikilinks as flatten
+    resolver = Resolver(knowledge)
+    return {name: flatten(body, resolver) if name.endswith((".md", ".feature")) and "[[" in body else body
+            for name, body in files.items()}
+
+
 async def open_blocking_questions(db: AsyncSession, task_id: str) -> int:
     return (await db.execute(select(func.count()).select_from(OpenQuestion).where(
         OpenQuestion.task_id == task_id, OpenQuestion.status == QuestionStatus.open,
@@ -643,7 +661,7 @@ async def bundle_files(db: AsyncSession, task: Task, project: Project) -> dict[s
         files["CODE_MAP.md"] = render_for_task(graph, task_text, knowledge)
     for kind, doc in (await latest_documents(db, task.id)).items():
         files[_DOC_FILES[kind]] = doc.body_markdown
-    return files
+    return flatten_bundle_wikilinks(files, knowledge)
 
 
 # ── Simulated output (no API key) ────────────────────────────────────────────

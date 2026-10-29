@@ -14,7 +14,8 @@ import type { KnowledgeEntry } from "@/types"
 export default function KnowledgeBySlugPage() {
   const { slug } = useParams<{ slug: string }>()
   const router = useRouter()
-  const target = decodeURIComponent(slug)
+  // Next decodes route params already; a literal "%" in a title must not be decoded twice
+  const target = safeDecode(slug)
   const [missing, setMissing] = useState(false)
   const [editor, setEditor] = useState<EditorState | null>(null)
 
@@ -51,4 +52,12 @@ export default function KnowledgeBySlugPage() {
       {editor && <EntryEditor state={editor} onClose={() => setEditor(null)} onSaved={(e) => router.replace(`/knowledge/${e.id}`)} />}
     </Page>
   )
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
 }

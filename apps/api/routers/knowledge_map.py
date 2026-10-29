@@ -6,7 +6,7 @@ from sqlalchemy import select
 from db.base import new_uuid
 from dependencies import DB, CurrentOrg, CurrentUser
 from models.project import Project
-from models.sdlc import KnowledgeEntry, KnowledgeKind, KnowledgeStatus
+from models.sdlc import KnowledgeEntry, KnowledgeKind
 from models.task_run import CommentAuthorType
 from schemas.sdlc import KnowledgeImportOut, KnowledgeLinksOut, KnowledgeOut, KnowledgeRef
 from services import knowledge_graph as kg
@@ -102,13 +102,14 @@ async def import_notes(current_user: CurrentUser, org: CurrentOrg, db: DB, files
         except UnicodeDecodeError:
             skipped += 1
             continue
-        if not note["title"] or not note["body_markdown"]:
+        if note["skip"] or not note["title"] or not note["body_markdown"]:
             skipped += 1
             continue
         target = existing.get(note["gravel_id"] or "") or by_title.get(kg._key(note["title"]))
         if target is not None:
             target.body_markdown = note["body_markdown"]
-            if target.kind != note["kind"] and target.kind != KnowledgeKind.decision:
+            # Only a note that names its kind may change one; decisions keep their number
+            if note["kind_explicit"] and target.kind != note["kind"] and target.kind != KnowledgeKind.decision:
                 target.kind = note["kind"]
             updated += 1
         else:
@@ -123,16 +124,9 @@ async def import_notes(current_user: CurrentUser, org: CurrentOrg, db: DB, files
             existing[target.id] = target
             by_title[kg._key(target.title)] = target
             created += 1
+        await sdlc.assign_decision_number(db, target)
+        await db.flush()
         titles.append(target.title)
-    await db.flush()
-    # Decision numbers for imported, accepted decisions
-    for e in existing.values():
-        if e.kind == KnowledgeKind.decision and e.number is None and e.status == KnowledgeStatus.accepted:
-            from sqlalchemy import func
-            current = (await db.execute(select(func.max(KnowledgeEntry.number)).where(
-                KnowledgeEntry.organization_id == org.id, KnowledgeEntry.kind == KnowledgeKind.decision))).scalar_one()
-            e.number = (current or 0) + 1
-            await db.flush()
     return KnowledgeImportOut(created=created, updated=updated, skipped=skipped, titles=titles)
 
 

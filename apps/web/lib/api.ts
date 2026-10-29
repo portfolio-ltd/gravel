@@ -94,3 +94,25 @@ export async function apiUpload<T = unknown>(path: string, formData: FormData): 
   }
   return res.json() as Promise<T>
 }
+
+// ── Authenticated downloads (blob responses) ──────────────────────────────────
+/** Fetches a file-like response with the session headers (an <a href> can't carry them)
+ *  and hands it to the browser as a download. */
+export async function apiDownload(path: string, fallbackName: string): Promise<void> {
+  const token = getAccessToken()
+  const orgId = getActiveOrgId()
+  const res = await fetch(`${BASE}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(orgId ? { "X-Org-Id": orgId } : {}),
+    },
+  })
+  if (!res.ok) throw new ApiError(res.status, res.status === 401 ? "Session expired — reload and try again" : `Download failed (${res.status})`)
+  const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? fallbackName
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement("a")
+  a.href = url
+  a.download = name
+  a.click()
+  URL.revokeObjectURL(url)
+}

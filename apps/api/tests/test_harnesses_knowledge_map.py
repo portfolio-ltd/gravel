@@ -215,6 +215,8 @@ async def test_obsidian_export_and_markdown_import(client: AsyncClient, auth_hea
     note = vault.read("Decisions/Use Postgres.md").decode()
     assert note.startswith("---\n") and f"gravel_id: {decision['id']}" in note and "kind: decision" in note
     assert "[[Invoice: the term]]" in note  # wikilinks survive the export
+    # The glossary file name had to be sanitised, so its title becomes an alias Obsidian resolves
+    assert "aliases:\n  - \"Invoice: the term\"" in vault.read("Glossary/Invoice- the term.md").decode()
     assert json.loads(vault.read("graph.json"))["counts"]["task"] == 1
     assert task["id"]
 
@@ -235,10 +237,25 @@ async def test_obsidian_export_and_markdown_import(client: AsyncClient, auth_hea
     links = (await client.get(f"/api/knowledge/{entries['Restart billing']['id']}/links", headers=auth_headers)).json()
     assert [x["id"] for x in links["outgoing"]] == [decision["id"]]
 
+    # A note without a kind never changes an existing entry's kind; task / PRD / project
+    # / README notes from the vault are not knowledge and are skipped
+    again = await client.post("/api/knowledge/import", files=[
+        ("files", ("Restart billing.md", "# Restart billing\n\n1. Updated steps.", "text/markdown")),
+        ("files", (f"Tasks/{project['name']}/Ship it.md", vault.read(f"Tasks/{project['name']}/Ship it.md"), "text/markdown")),
+        ("files", ("README.md", vault.read("README.md"), "text/markdown")),
+        ("files", ("Projects/P.md", "---\ntype: project\n---\n# P\n\nx", "text/markdown")),
+    ], headers=auth_headers)
+    assert again.json() == {"created": 0, "updated": 1, "skipped": 3, "titles": ["Restart billing"]}
+    entries = {e["title"]: e for e in (await client.get("/api/knowledge?status=accepted", headers=auth_headers)).json()}
+    assert entries["Restart billing"]["kind"] == "runbook" and entries["Restart billing"]["body_markdown"] == "1. Updated steps."
+    assert "Ship it" not in entries and "Gravel knowledge vault" not in entries
+
 
 async def test_external_links_crud_and_bundle(client: AsyncClient, auth_headers: dict, project: dict):
     pid = project["id"]
-    task = await _task(client, auth_headers, pid, "Linked task")
+    await _knowledge(client, auth_headers, kind="pattern", title="Stream exports", body_markdown="Stream.")
+    task = await _task(client, auth_headers, pid, "Linked task",
+                       description="Follow [[stream-exports|the export pattern]], see [[Ghost]]")
     bad = await client.post("/api/links", json={"entity_type": "task", "entity_id": task["id"], "url": "javascript:alert(1)"},
                             headers=auth_headers)
     assert bad.status_code == 422
@@ -262,6 +279,7 @@ async def test_external_links_crud_and_bundle(client: AsyncClient, auth_headers:
     await client.post(f"/api/agent/run/{pid}", headers=auth_headers)
     bundle = (await client.post("/api/agent/poll-next-task", headers=rt)).json()["bundle"]
     assert "## Project\n- [Grafana](https://example.com/dashboard) — dashboard: handy" in bundle["LINKS.md"]
+    assert "Follow the export pattern, see Ghost" in bundle["TASK.md"]  # wikilinks flattened for agents
     assert "## Task: Linked task\n- [OPS-12](https://example.com/ticket) — other" in bundle["LINKS.md"]
 
     assert (await client.delete(f"/api/links/{listed[0]['id']}", headers=auth_headers)).status_code == 204

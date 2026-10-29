@@ -3,7 +3,7 @@ criteria, the knowledge base, and GitHub issue import."""
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from config import settings
@@ -213,14 +213,6 @@ async def _check_project(db, project_id: str | None, org) -> None:
             raise HTTPException(400, "Project not found in this organization")
 
 
-async def _assign_decision_number(db, entry: KnowledgeEntry) -> None:
-    if entry.kind == KnowledgeKind.decision and entry.number is None and entry.status == KnowledgeStatus.accepted:
-        current = (await db.execute(select(func.max(KnowledgeEntry.number)).where(
-            KnowledgeEntry.organization_id == entry.organization_id, KnowledgeEntry.kind == KnowledgeKind.decision,
-        ))).scalar_one()
-        entry.number = (current or 0) + 1
-
-
 @router.get("/knowledge", response_model=list[KnowledgeOut])
 async def list_knowledge(current_user: CurrentUser, org: CurrentOrg, db: DB, kind: KnowledgeKind | None = None,
                          status: KnowledgeStatus | None = None, project_id: str | None = None):
@@ -246,7 +238,7 @@ async def create_knowledge(body: KnowledgeIn, current_user: CurrentUser, org: Cu
         created_by_id=current_user.id, parent_id=body.parent_id,
         slug=await unique_slug(db, org.id, body.title.strip(), wanted=body.slug),
     )
-    await _assign_decision_number(db, entry)
+    await sdlc.assign_decision_number(db, entry)
     db.add(entry)
     await db.flush()
     return _knowledge_out(entry)
@@ -276,7 +268,7 @@ async def update_knowledge(entry_id: str, body: KnowledgeUpdate, current_user: C
     if not entry.slug:
         from services.knowledge_graph import unique_slug
         entry.slug = await unique_slug(db, org.id, entry.title, exclude_id=entry.id)
-    await _assign_decision_number(db, entry)
+    await sdlc.assign_decision_number(db, entry)
     await db.flush()
     return _knowledge_out(entry)
 
