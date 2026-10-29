@@ -6,6 +6,7 @@ from schemas.task import TaskOut
 class BoardTaskOut(TaskOut):
     open_question_count: int = 0  # open blocking questions
     stage_name: str | None = None
+    waiting_on_count: int = 0  # dependencies not done yet (task graph)
 
 
 class BoardColumn(BaseModel):

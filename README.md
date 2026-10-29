@@ -43,7 +43,7 @@ already trust:
 ## How it works
 
 ```
- PRD / GitHub issues
+ PRD / GitHub issues / an existing repo (mapped into a code graph)
         │
         ▼
  ┌──────────┐   ┌─────────────┐   ┌──────┐   ┌───────┐   ┌────────┐   ┌────────┐
@@ -75,6 +75,30 @@ Workflows are fully editable. Three templates ship built in:
 - **Groom, build, test, deploy** — the classic four-phase pipeline.
 
 See [docs/methodology.md](docs/methodology.md) for the full method.
+
+### Graph engineering
+
+Gravel structures the work as explicit graphs instead of one agent looping on
+its own judgment:
+
+- **Workflow graph** — each stage names where a task goes on success (default:
+  the next stage) and on failure (its rework target), so workflows can skip,
+  branch and loop. A stop rule parks a task that re-enters one stage ten times
+  without a human approval.
+- **Task graph** — tasks depend on other tasks. Running a project starts only
+  the tasks whose dependencies are done; finishing one starts the tasks that
+  were waiting on it, so independent work runs in parallel. PRD parsing
+  proposes the dependencies.
+- **Code graph** — point a project at an existing GitHub repository and Gravel
+  maps it: modules, how they import each other (Python, JavaScript/TypeScript,
+  Go), stack, build and test commands, entry points, plus an architecture
+  overview written with your key. Every run gets `CODE_MAP.md` with the part of
+  the graph its task touches, so work on an existing codebase starts from its
+  real structure.
+- **The graph inside a run** — with the Claude Code executor, a run gets
+  subagents for its role (explorer, implementers in parallel, test runner,
+  fresh-context reviewer) and a test gate that runs the project's tests before
+  a code-writing run may finish.
 
 ### Who does the work
 

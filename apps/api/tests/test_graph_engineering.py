@@ -298,3 +298,25 @@ def test_subagent_bundle_per_role():
     assert "claude/settings.json" not in subagents.bundle_files("build", None)  # no commands known
     assert subagents.bundle_files("deploy", graph) == {}
     assert subagents.role_for(None, "testing") == "verify" and subagents.role_for("mystery", None) == "custom"
+
+
+def test_test_gate_script_blocks_once_on_failures(tmp_path):
+    import subprocess
+    import sys
+
+    gate = tmp_path / ".gravel" / "claude"
+    gate.mkdir(parents=True)
+    (gate / "test_gate.py").write_text(subagents.GATE_SCRIPT)
+
+    def run(commands: list[dict], event: dict) -> subprocess.CompletedProcess:
+        (gate / "test_gate.json").write_text(json.dumps(commands))
+        return subprocess.run([sys.executable, str(gate / "test_gate.py")], input=json.dumps(event), text=True,
+                              capture_output=True, cwd=tmp_path, env={"CLAUDE_PROJECT_DIR": str(tmp_path), "PATH": "/usr/bin:/bin"})
+
+    failing = [{"cwd": ".", "run": "echo 'AssertionError: 1 != 2' && exit 1"}]
+    blocked = run(failing, {"stop_hook_active": False})
+    assert blocked.returncode == 2 and "AssertionError: 1 != 2" in blocked.stderr
+    assert run(failing, {"stop_hook_active": True}).returncode == 0  # never loops
+    assert run([{"cwd": ".", "run": "true"}], {}).returncode == 0
+    assert run([{"cwd": ".", "run": "no-such-tool-xyz"}], {}).returncode == 0  # not installed → no gate
+    assert run([{"cwd": "missing", "run": "false"}], {}).returncode == 0

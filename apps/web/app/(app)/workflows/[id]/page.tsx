@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Field, Input, Select, Switch, Textarea } from "@/components/ui/form"
 import { Page, SectionCard } from "@/components/ui/page"
 import { Pipeline, PipelineLegend, ROLE_STYLE, stagesFromWorkflow } from "@/components/workflow/Pipeline"
+import GraphView, { type GraphEdge, type GraphNode } from "@/components/graph/GraphView"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { ModelOption, StageRole, StageRoleKey, WorkflowStage, WorkflowStageCreate } from "@/types"
@@ -30,6 +31,36 @@ function ToggleRow({ label, hint, checked, onChange, disabled }: {
       <Switch checked={checked} onChange={onChange} disabled={disabled} label={label} className="mt-0.5" />
     </div>
   )
+}
+
+/** The workflow as a graph: success edges solid, rework edges dashed. */
+function stageGraph(stages: WorkflowStage[], roles: StageRole[]): { nodes: GraphNode[]; edges: GraphEdge[] } {
+  const nodes = stages.map((s) => ({
+    id: s.id,
+    label: s.name,
+    sublabel: [roles.find((r) => r.key === s.role)?.label ?? s.role, !s.is_ai_executable && "manual",
+      s.requires_human_approval && "gate"].filter(Boolean).join(" · "),
+    tone: s.is_ai_executable ? ("default" as const) : ("warning" as const),
+  }))
+  const edges: GraphEdge[] = []
+  stages.forEach((s, i) => {
+    const next = s.next_stage_id ?? stages[i + 1]?.id
+    if (next) edges.push({ source: s.id, target: next })
+    if (s.rework_target_stage_id) edges.push({ source: s.id, target: s.rework_target_stage_id, dashed: true })
+  })
+  return { nodes, edges }
+}
+
+/** Stages no edge leads to from the first stage — tasks can never reach them. */
+function unreachableStages(stages: WorkflowStage[], edges: GraphEdge[]): WorkflowStage[] {
+  if (!stages.length) return []
+  const seen = new Set([stages[0].id])
+  const queue = [stages[0].id]
+  while (queue.length) {
+    const id = queue.shift()!
+    for (const e of edges) if (e.source === id && !seen.has(e.target)) { seen.add(e.target); queue.push(e.target) }
+  }
+  return stages.filter((s) => !seen.has(s.id))
 }
 
 function StageCard({
@@ -190,6 +221,18 @@ function StageCard({
         </Field>
       </div>
 
+      <Field label="On success, go to" className="mb-2"
+        hint={stage.next_stage_id ? "Skips the order above; an edge back to an earlier stage makes a loop (the stop rule parks it after 10 visits)." : undefined}>
+        <Select
+          value={stage.next_stage_id ?? ""}
+          onChange={(e) => patch({ next_stage_id: e.target.value || null })}
+          aria-label="Next stage on success"
+        >
+          <option value="">{index === total - 1 ? "Done — the task is complete" : `Next in order — ${siblings[index + 1]?.name}`}</option>
+          {siblings.filter((s) => s.id !== stage.id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </Select>
+      </Field>
+
       <div className="mb-4 grid grid-cols-[1fr_110px] gap-2">
         <Field label="On failure, rework via">
           <Select
@@ -281,6 +324,8 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
 
   const stages = [...wf.stages].sort((a, b) => a.stage_order - b.stage_order)
   const roles = meta?.stage_roles ?? []
+  const graph = stageGraph(stages, roles)
+  const unreachable = unreachableStages(stages, graph.edges)
 
   return (
     <Page>
@@ -313,6 +358,20 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
       <SectionCard title="Pipeline" description="How a task flows through this workflow." className="mb-6">
         <Pipeline stages={stagesFromWorkflow(stages)} />
         <div className="mt-3"><PipelineLegend /></div>
+        {stages.length > 1 && (
+          <>
+            <p className="mb-2 mt-5 text-xs font-medium">As a graph</p>
+            <GraphView {...graph} ariaLabel="Workflow stages and their edges" />
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Solid arrows: where a stage goes when it succeeds. Dashed: where it sends the task back on failure.
+            </p>
+            {unreachable.length > 0 && (
+              <p className="mt-1 text-[11px] font-medium text-warning">
+                Never reached from “{stages[0].name}”: {unreachable.map((s) => s.name).join(", ")}
+              </p>
+            )}
+          </>
+        )}
       </SectionCard>
 
       <div className={cn("space-y-3", (updateWorkflow.isPending || addStage.isPending) && "opacity-70")}>
@@ -354,7 +413,8 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
       </div>
 
       <p className="mt-4 text-[11px] text-muted-foreground">
-        Tasks flow through stages top to bottom. A <b>manual</b> stage parks the task until a human approves it.
+        Tasks flow through stages top to bottom unless a stage names where to go <b>on success</b>, which lets a
+        workflow skip, branch back or loop. A <b>manual</b> stage parks the task until a human approves it.
         An <b>approval gate</b> pauses after the stage&apos;s AI run completes. A review or verification that requests
         changes counts as a failure and follows the rework target until max attempts, then waits for a human.
         A stage <b>model</b> overrides the engineer&apos;s model, which overrides the project default.

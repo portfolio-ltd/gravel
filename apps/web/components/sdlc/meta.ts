@@ -1,7 +1,7 @@
 import type { DocumentKind, StageRoleKey, Task, TaskRun, TaskRunOutcome } from "@/types"
 
 /** Board payload tasks carry a few extras beyond Task. */
-export type BoardTask = Task & { open_question_count?: number; stage_name?: string | null }
+export type BoardTask = Task & { open_question_count?: number; stage_name?: string | null; waiting_on_count?: number }
 
 export const OUTCOME_META: Record<TaskRunOutcome, { label: string; tone: string }> = {
   grooming_complete: { label: "Groomed", tone: "bg-info/10 text-info" },

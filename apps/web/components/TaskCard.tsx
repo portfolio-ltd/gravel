@@ -4,10 +4,10 @@ import { useState } from "react"
 import { MoreHorizontal, Trash2, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown"
-import type { Task, TaskStatus } from "@/types"
+import type { TaskStatus } from "@/types"
 import { usePreferences } from "@/contexts/PreferencesContext"
 import CardMeta from "@/components/sdlc/CardMeta"
-import { PRIORITY_DOT } from "@/components/sdlc/meta"
+import { PRIORITY_DOT, type BoardTask } from "@/components/sdlc/meta"
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   pending:     "bg-slate-100 text-slate-600",
@@ -24,11 +24,11 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 }
 
 interface TaskCardProps {
-  task: Task
+  task: BoardTask
   onStatusChange?: (taskId: string, status: TaskStatus) => void
   onDelete?: (taskId: string) => void
   /** Open the task (e.g. its detail panel) */
-  onClick?: (task: Task) => void
+  onClick?: (task: BoardTask) => void
 }
 
 const STATUS_CYCLE: TaskStatus[] = ["pending", "in_progress", "qa", "done"]

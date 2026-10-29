@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import StageStepper from "@/components/sdlc/StageStepper"
 import GateActions from "@/components/sdlc/GateActions"
 import CriteriaEditor from "@/components/sdlc/CriteriaEditor"
+import DependenciesEditor from "@/components/sdlc/DependenciesEditor"
 import QuestionsPanel from "@/components/sdlc/QuestionsPanel"
 import DocumentsPanel from "@/components/sdlc/DocumentsPanel"
 import ActivityPanel from "@/components/sdlc/ActivityPanel"
@@ -214,6 +215,7 @@ export default function TaskDetailPanel({ task: initialTask, onClose }: Props) {
                   : <p className="text-xs text-muted-foreground">No description.</p>}
               </section>
               <CriteriaEditor task={task} />
+              {project && <DependenciesEditor task={task} projectTasks={project.tasks} />}
               <QuestionsPanel taskId={task.id} />
             </TabsContent>
             <TabsContent value="documents" className="pb-8 pt-3">
