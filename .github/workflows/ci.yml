@@ -20,7 +20,7 @@ jobs:
         working-directory: apps/api
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - run: uv venv .venv && uv pip install --python .venv/bin/python -r requirements.txt ruff
@@ -36,7 +36,7 @@ jobs:
         working-directory: apps/runtime
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - run: uv venv .venv && uv pip install --python .venv/bin/python -e ".[test]"
