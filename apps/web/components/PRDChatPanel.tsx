@@ -5,6 +5,8 @@ import { Send, Loader2, Sparkles } from "lucide-react"
 import { usePRDChat, useUpdatePRD } from "@/hooks/usePRDs"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import DictationButton from "@/components/ui/dictation-button"
+import { appendTranscript } from "@/lib/dictation"
 import { toast } from "sonner"
 import type { PRD } from "@/types"
 
@@ -90,7 +92,8 @@ export default function PRDChatPanel({ prd }: { prd: PRD }) {
         </div>
       )}
 
-      <div className="border-t px-3 py-3 flex gap-2">
+      <div className="border-t px-3 py-3 flex items-center gap-2">
+        <DictationButton showInterim={false} onText={(t) => setMessage((v) => appendTranscript(v, t))} />
         <input
           value={message}
           onChange={(e) => setMessage(e.target.value)}

@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Field, Input, Segmented, Select, Textarea } from "@/components/ui/form"
 import Markdown from "@/components/Markdown"
+import DictationButton from "@/components/ui/dictation-button"
+import { appendTranscript } from "@/lib/dictation"
 import { parseWikilinks } from "@/lib/wikilinks"
 import type { KnowledgeEntry, KnowledgeKind, KnowledgeStatus } from "@/types"
 import { BookA, LifeBuoy, ListChecks, Puzzle, Scale, StickyNote } from "lucide-react"
@@ -137,12 +139,15 @@ export default function EntryEditor({ state, onClose, onSaved }: {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-foreground/80">Body (markdown)</span>
-              <Segmented
-                size="sm"
-                value={mode}
-                onChange={setMode}
-                options={[{ value: "write", label: "Write" }, { value: "preview", label: "Preview" }]}
-              />
+              <div className="flex items-center gap-2">
+                {mode === "write" && <DictationButton size="sm" onText={(t) => setBody((v) => appendTranscript(v, t))} />}
+                <Segmented
+                  size="sm"
+                  value={mode}
+                  onChange={setMode}
+                  options={[{ value: "write", label: "Write" }, { value: "preview", label: "Preview" }]}
+                />
+              </div>
             </div>
             {mode === "write" ? (
               <Textarea

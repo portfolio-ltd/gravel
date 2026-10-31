@@ -10,6 +10,8 @@ import PRDChatPanel from "@/components/PRDChatPanel"
 import PRDConvertDialog from "@/components/PRDConvertDialog"
 import TagPicker from "@/components/TagPicker"
 import { Button } from "@/components/ui/button"
+import DictationButton from "@/components/ui/dictation-button"
+import { appendTranscript } from "@/lib/dictation"
 import { toast } from "sonner"
 import type { PRDStatus } from "@/types"
 
@@ -102,9 +104,12 @@ export default function PRDDetailPage({ params }: { params: Promise<{ prdId: str
           <div className="px-4 py-3 border-b flex items-center justify-between">
             <h2 className="text-sm font-semibold">Body</h2>
             {editing ? (
-              <Button size="sm" className="h-7 text-xs" onClick={saveBody} disabled={updatePRD.isPending}>
-                <Check className="w-3 h-3" /> Save
-              </Button>
+              <div className="flex items-center gap-2">
+                <DictationButton size="sm" onText={(t) => setDraftBody((v) => appendTranscript(v, t))} />
+                <Button size="sm" className="h-7 text-xs" onClick={saveBody} disabled={updatePRD.isPending}>
+                  <Check className="w-3 h-3" /> Save
+                </Button>
+              </div>
             ) : (
               <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditing(true)}>
                 <Pencil className="w-3 h-3" /> Edit

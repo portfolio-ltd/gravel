@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import { FileText, Loader2 } from "lucide-react"
 import { useCreatePRD } from "@/hooks/usePRDs"
 import { Button } from "@/components/ui/button"
+import DictationButton from "@/components/ui/dictation-button"
+import { appendTranscript } from "@/lib/dictation"
 import { toast } from "sonner"
 
 export default function NewPRDPage() {
@@ -56,7 +58,10 @@ export default function NewPRDPage() {
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1.5">Body (markdown)</label>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="text-xs font-medium text-muted-foreground block">Body (markdown)</label>
+              <DictationButton size="sm" onText={(t) => setBody((v) => appendTranscript(v, t))} />
+            </div>
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}

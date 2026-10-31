@@ -8,6 +8,12 @@ All notable changes to Gravel are recorded here. The format follows
 
 ### Added
 
+- Voice input: a microphone button on comments, gate notes, question answers,
+  the PRD chat and body, and knowledge entries turns speech into text with the
+  browser's Web Speech API (Chrome, Edge, Safari; hidden where unsupported).
+  Nothing is sent to Gravel's servers. English variants only for now — the
+  language lives under Settings → Profile → Voice input; other locales are
+  tracked as a help-wanted issue
 - Per-stage model selection: each workflow stage can name its own model (for
   example a cheaper model for Analyze and a stronger one for Build). Runs
   resolve their model as stage → engineer → project → `DEFAULT_MODEL`, and the

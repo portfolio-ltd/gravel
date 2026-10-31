@@ -5,6 +5,8 @@ import { CheckCircle, Loader2, MessageSquareWarning, OctagonX } from "lucide-rea
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/form"
+import DictationButton from "@/components/ui/dictation-button"
+import { appendTranscript } from "@/lib/dictation"
 import { errorDetail, useApproveGate, useRejectGate } from "@/hooks/useTaskExtras"
 import { cn } from "@/lib/utils"
 
@@ -68,6 +70,7 @@ export default function GateActions({ runId, taskId, compact, className }: Props
             Send back
           </Button>
           <Button size="sm" variant="ghost" className={size} disabled={busy} onClick={() => setMode("idle")}>Cancel</Button>
+          <DictationButton size="sm" className="ml-auto" onText={(t) => setNote((v) => appendTranscript(v, t))} />
         </div>
       </div>
     )
