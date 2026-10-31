@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { CheckCircle2, Cpu, Eye, EyeOff, Loader2, Lock, Palette, Settings, User } from "lucide-react"
+import { CheckCircle2, Cpu, Eye, EyeOff, Loader2, Lock, Mic, Palette, Settings, User } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/contexts/AuthContext"
 import { usePreferences } from "@/contexts/PreferencesContext"
@@ -11,11 +11,12 @@ import { useMeta } from "@/hooks/useSdlc"
 import AppearanceSettings from "@/components/settings/AppearanceSettings"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Field, Input } from "@/components/ui/form"
+import { Field, Input, Select } from "@/components/ui/form"
 import { Page, PageHeader, SectionCard } from "@/components/ui/page"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ModelOption } from "@/types"
 import { cn, getInitials } from "@/lib/utils"
+import { DICTATION_LANGUAGES, getSpeechRecognition } from "@/lib/dictation"
 
 const TABS = ["appearance", "models", "profile"] as const
 type Tab = (typeof TABS)[number]
@@ -166,6 +167,36 @@ function ModelsTab() {
   )
 }
 
+function VoiceInputSettings() {
+  const { prefs, update } = usePreferences()
+  const [supported, setSupported] = useState<boolean | null>(null)
+  useEffect(() => { setSupported(getSpeechRecognition() !== null) }, [])
+
+  return (
+    <SectionCard
+      title="Voice input"
+      description="Every comment, answer, note and PRD field has a microphone button. Speech is turned into text by your browser; nothing is recorded by Gravel."
+    >
+      <div className="max-w-md space-y-4">
+        <Field
+          label="Dictation language"
+          hint={<>English only for now. Want another language? <a className="underline hover:text-foreground" href="https://github.com/portfolio-ltd/gravel/issues" target="_blank" rel="noopener noreferrer">Open or upvote an issue</a>.</>}
+        >
+          <Select value={prefs.dictationLang} onChange={(e) => update({ dictationLang: e.target.value })} aria-label="Dictation language">
+            {DICTATION_LANGUAGES.map((lang) => <option key={lang.code} value={lang.code}>{lang.label}</option>)}
+          </Select>
+        </Field>
+        {supported === false && (
+          <p className="flex items-start gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            <Mic className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            This browser has no speech recognition, so the microphone buttons are hidden. Chrome, Edge and Safari support it.
+          </p>
+        )}
+      </div>
+    </SectionCard>
+  )
+}
+
 function ProfileTab() {
   const { user } = useAuth()
   const updateUser = useUpdateUser()
@@ -184,6 +215,7 @@ function ProfileTab() {
   }
 
   return (
+    <div className="space-y-5">
     <SectionCard title="Profile">
       <div className="mb-6 flex items-center gap-4">
         <Avatar className="h-14 w-14">
@@ -209,6 +241,8 @@ function ProfileTab() {
         </Button>
       </form>
     </SectionCard>
+    <VoiceInputSettings />
+    </div>
   )
 }
 
