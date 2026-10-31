@@ -10,6 +10,8 @@ import { errorDetail } from "@/hooks/useTaskExtras"
 import Markdown from "@/components/Markdown"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/form"
+import DictationButton from "@/components/ui/dictation-button"
+import { appendTranscript } from "@/lib/dictation"
 import { cn } from "@/lib/utils"
 
 function CommentItem({ comment, taskId }: { comment: TaskComment; taskId: string }) {
@@ -84,7 +86,8 @@ export default function DiscussionPanel({ taskId }: { taskId: string }) {
           className="min-h-[72px] text-sm"
           aria-label="New comment"
         />
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-2">
+          <DictationButton onText={(t) => setBody((v) => appendTranscript(v, t))} />
           <Button size="sm" onClick={send} disabled={!body.trim() || add.isPending}>
             <Send className="h-3.5 w-3.5" /> Comment
           </Button>

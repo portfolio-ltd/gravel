@@ -8,6 +8,8 @@ export type Radius = "sharp" | "default" | "round"
 export type FontChoice = "inter" | "geist" | "plex" | "system"
 export type NavLayout = "sidebar" | "topbar"
 
+import { DEFAULT_DICTATION_LANGUAGE, isDictationLanguage } from "@/lib/dictation"
+
 export interface BoardCardFields {
   priority: boolean
   type: boolean
@@ -29,6 +31,8 @@ export interface Preferences {
   reduceMotion: boolean
   /** Preselected model for new projects; null = the server's DEFAULT_MODEL */
   defaultModel: string | null
+  /** BCP 47 tag for voice input (Web Speech API); only English variants are offered today */
+  dictationLang: string
   board: {
     cardFields: BoardCardFields
     compactCards: boolean
@@ -76,6 +80,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebarCollapsed: false,
   reduceMotion: false,
   defaultModel: null,
+  dictationLang: DEFAULT_DICTATION_LANGUAGE,
   board: {
     cardFields: { priority: true, type: true, tags: true, stage: true, criteria: true, questions: true, links: true },
     compactCards: false,
@@ -92,6 +97,7 @@ export function normalizePreferences(raw: unknown): Preferences {
   return {
     ...DEFAULT_PREFERENCES,
     ...p,
+    dictationLang: isDictationLanguage(p.dictationLang) ? p.dictationLang : DEFAULT_DICTATION_LANGUAGE,
     board: {
       ...DEFAULT_PREFERENCES.board,
       ...(p.board ?? {}),

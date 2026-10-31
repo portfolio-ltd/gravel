@@ -149,6 +149,9 @@ ledger with cost estimates per task, project, PRD and org.
 - **Customizable UI** — light/dark/system theme, accent color, density, radius,
   font, sidebar or top-bar navigation, board card fields; preferences follow
   you across devices, and org admins can set a default accent and brand name.
+- **Voice input** — dictate comments, gate notes, answers, PRDs and knowledge
+  entries; speech is transcribed in the browser (English today, more locales
+  welcome).
 
 ## Architecture
 

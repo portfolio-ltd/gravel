@@ -8,6 +8,8 @@ import type { OpenQuestion, QuestionStatus } from "@/types"
 import { useAddQuestion, useDeleteQuestion, useTaskQuestions, useUpdateQuestion } from "@/hooks/useSdlc"
 import { errorDetail } from "@/hooks/useTaskExtras"
 import { Input, Textarea } from "@/components/ui/form"
+import DictationButton from "@/components/ui/dictation-button"
+import { appendTranscript } from "@/lib/dictation"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -87,6 +89,7 @@ function QuestionItem({ q, taskId }: { q: OpenQuestion; taskId: string }) {
               <div className="flex gap-2">
                 <Button type="submit" size="sm" className="h-7 text-xs" disabled={!answer.trim() || update.isPending}>Save answer</Button>
                 <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAnswering(false)}>Cancel</Button>
+                <DictationButton size="sm" className="ml-auto" onText={(t) => setAnswer((v) => appendTranscript(v, t))} />
               </div>
             </form>
           )}

@@ -19,6 +19,21 @@ Preferences apply instantly, are cached locally (so pages never flash the
 wrong theme), and sync to `PUT /api/users/me/preferences` so they follow you
 across devices.
 
+## Voice input (per user)
+
+Every prose field — task comments, "request changes" notes, answers to open
+questions, the PRD chat and body, knowledge entries — has a microphone button.
+It uses the browser's Web Speech API, so recognition happens in the browser
+(Chrome, Edge and Safari; Firefox has no implementation, and the button is
+hidden there). Gravel never receives audio.
+
+Settings → Profile → **Voice input** picks the dictation language. Only
+English variants (US, UK, India, Australia) are offered today: a locale is
+listed in `apps/web/lib/dictation.ts` once someone has tested it, and the
+preference falls back to `en-US` for anything else. Adding a language is a
+small, well-scoped contribution — see the open "Voice input: more languages"
+issue.
+
 ## Organization branding
 
 Org admins can set a default accent color and brand name
