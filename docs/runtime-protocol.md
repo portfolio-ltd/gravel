@@ -18,6 +18,11 @@ Environment injected at launch: `GRAVEL_API_BASE_URL`, `GRAVEL_ENGINEER_ID`,
 `GRAVEL_HEARTBEAT_INTERVAL_SECONDS`, optional `GRAVEL_GITHUB_TOKEN`, and the
 owner's provider key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GROQ_API_KEY`).
 
+A **local runner** (`gravel work` on someone's machine) gets its runtime token
+from `POST /api/runners/register` instead, authenticated with the person's API
+token, and uses the same endpoints below. Personal runners only claim runs from
+projects their owner owns. See [local-runners.md](local-runners.md).
+
 ## Endpoints
 
 | Method & path | Purpose |
@@ -27,6 +32,9 @@ owner's provider key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GROQ_API_KEY`).
 | `POST /api/agent/task-runs/{run_id}/heartbeat` | Run liveness while working |
 | `POST /api/agent/task-runs/{run_id}/logs` | `{message, level}` — appears in the run timeline |
 | `POST /api/agent/task-runs/{run_id}/outcome` | Report the result (once per run) |
+| `POST /api/agent/poll-next-job` | Local runners: claim a keyless model call for their owner |
+| `POST /api/agent/jobs/{job_id}/result` | Local runners: `{text, error, tokens_in, tokens_out}` |
+| `POST /api/agent/runner/stop` | Local runners: go offline |
 
 ### Poll response
 

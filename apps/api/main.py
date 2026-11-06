@@ -15,6 +15,7 @@ from db.base import Base
 from db.session import engine
 from routers import (
     agent,
+    api_tokens,
     artifacts,
     auth,
     board,
@@ -29,6 +30,7 @@ from routers import (
     organizations,
     prds,
     projects,
+    runners,
     sdlc,
     tags,
     task_runs,
@@ -132,6 +134,8 @@ app.include_router(tags.router,        prefix=API)
 app.include_router(prds.router,        prefix=API)
 app.include_router(sdlc.router,        prefix=API)
 app.include_router(code_graph.router,  prefix=API)
+app.include_router(api_tokens.router,  prefix=API)
+app.include_router(runners.router,     prefix=API)
 app.include_router(harnesses.router,   prefix=API)
 app.include_router(knowledge_map.router, prefix=API)
 app.include_router(links.router,       prefix=API)

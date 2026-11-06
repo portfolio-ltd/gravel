@@ -73,7 +73,7 @@ async def approve(run_id: str, body: ApproveReject, db: AsyncSession = Depends(g
 
     # No live runtimes? Let the in-process executor pick up the queued run.
     # Commit first so the drain worker (separate session) can see it.
-    if not await orchestrator.has_active_runtimes(db, project.organization_id):
+    if not await orchestrator.has_active_runtimes(db, project.organization_id, project.owner_id):
         await db.commit()
         agent_svc.schedule_drain(project.id, project.owner_id)
     return result
@@ -87,7 +87,7 @@ async def reject(run_id: str, body: ApproveReject, db: AsyncSession = Depends(ge
     await run_svc.reject_run(db, run_id, body.note, rework=body.rework, author_id=current_user.id)
     result = await run_svc.get_run(db, run_id)
     task, project = await _project_for_run(db, result)
-    if not await orchestrator.has_active_runtimes(db, project.organization_id):
+    if not await orchestrator.has_active_runtimes(db, project.organization_id, project.owner_id):
         await db.commit()  # make any rework run visible to the drain worker's session
         agent_svc.schedule_drain(project.id, project.owner_id)
     return result
@@ -103,6 +103,7 @@ async def agent_heartbeat(
     run = await run_svc.record_heartbeat(db, run_id)
     if not run:
         raise HTTPException(404, "Run not found")
+    runtime.last_heartbeat_at = run.last_heartbeat_at  # a long run must not make its runner look offline
     return {"status": "ok"}
 
 
@@ -141,8 +142,11 @@ async def agent_outcome(
     if body.tokens_in or body.tokens_out:
         from services.token_usage import record_usage
         task, project = await _project_for_run(db, run)
+        model = body.model or "unknown"
+        if runtime.kind == "local":  # the runner's own subscription pays: shown, priced at 0
+            model = f"runner/{model}"
         await record_usage(
-            db, model=body.model or "unknown",
+            db, model=model,
             tokens_in=body.tokens_in, tokens_out=body.tokens_out,
             user_id=project.owner_id, organization_id=project.organization_id,
             task_id=run.task_id, task_run_id=run.id,
@@ -188,7 +192,7 @@ async def retry_task(task_id: str, db: AsyncSession = Depends(get_db), current_u
     else:
         await orchestrator.create_phase_run(db, task, TaskRunPhase.grooming)
     project_id, owner_id = task.project.id, task.project.owner_id
-    if not await orchestrator.has_active_runtimes(db, task.project.organization_id):
+    if not await orchestrator.has_active_runtimes(db, task.project.organization_id, task.project.owner_id):
         await db.commit()  # make the new run visible to the drain worker's session
         agent_svc.schedule_drain(project_id, owner_id)
     return {"status": "ok", "task_id": task_id}

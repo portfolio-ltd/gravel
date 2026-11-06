@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     CODE_GRAPH_AUTO_BUILD: bool = True
     CODE_GRAPH_MAX_ARCHIVE_MB: int = 100
 
+    # ── Local runners ─────────────────────────────────────────────────────────
+    # How long a keyless model call waits for the user's runner to answer
+    RUNNER_JOB_TIMEOUT_SECONDS: int = 240
+
     # ── Git integrations ──────────────────────────────────────────────────────
     GITHUB_CLIENT_ID: str = ""
     GITHUB_CLIENT_SECRET: str = ""

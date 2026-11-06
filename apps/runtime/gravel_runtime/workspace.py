@@ -21,6 +21,10 @@ def _authed_url(repo_url: str) -> str:
             "https://github.com/",
             f"https://x-access-token:{config.github_token}@github.com/",
         )
+    if config.git_ssh and repo_url.startswith("https://github.com/"):
+        # A local runner without a token uses the person's own SSH keys
+        slug = repo_url.removeprefix("https://github.com/").rstrip("/").removesuffix(".git")
+        return f"git@github.com:{slug}.git"
     return repo_url
 
 

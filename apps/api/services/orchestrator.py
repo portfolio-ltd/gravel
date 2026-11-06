@@ -249,22 +249,30 @@ async def create_phase_run(db: AsyncSession, task: Task, phase: TaskRunPhase) ->
     return run
 
 
-async def has_active_runtimes(db: AsyncSession, organization_id: str | None) -> bool:
+async def has_active_runtimes(db: AsyncSession, organization_id: str | None,
+                              project_owner_id: str | None = None) -> bool:
+    """Is some engineer runtime online that could take this project's runs?
+
+    Local runners count only while heartbeating, and personal ones ("mine")
+    only for projects their owner owns (services/runners.py).
+    """
     if not organization_id:
         return False
+    from services.runners import serves_owner
     result = await db.execute(
-        select(EngineerRuntime.id)
+        select(EngineerRuntime)
         .join(Engineer, Engineer.id == EngineerRuntime.engineer_id)
         .where(Engineer.organization_id == organization_id, EngineerRuntime.is_active.is_(True))
-        .limit(1)
     )
-    return result.scalar_one_or_none() is not None
+    return any(rt.online and (project_owner_id is None or serves_owner(rt, project_owner_id))
+               for rt in result.scalars())
 
 
 async def claim_next_run(
     db: AsyncSession, engineer: Engineer, runtime: EngineerRuntime
 ) -> tuple[TaskRun, Task, Project] | None:
     """Hand the oldest unclaimed pending run (scoped to the engineer's org) to a runtime."""
+    runtime.last_heartbeat_at = datetime.now(timezone.utc)  # polling is a sign of life
     if runtime.current_task_run_id:
         current = await db.get(TaskRun, runtime.current_task_run_id)
         if current and current.outcome is None:
@@ -290,6 +298,8 @@ async def claim_next_run(
         .order_by(TaskRun.started_at.asc())
         .limit(1)
     )
+    if runtime.kind == "local" and runtime.scope == "mine":
+        q = q.where(Project.owner_id == runtime.owner_user_id)  # a personal runner serves its owner only
     if db.bind and db.bind.dialect.name == "postgresql":
         q = q.with_for_update(of=TaskRun, skip_locked=True)
     row = (await db.execute(q)).first()

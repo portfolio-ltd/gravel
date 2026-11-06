@@ -8,8 +8,9 @@ on this repository — Claude Code reads `CLAUDE.md`, which points here.
 ```
 apps/api       FastAPI + SQLAlchemy 2 (async) + Alembic. Python 3.12, uv, ruff, pytest.
 apps/web       Next.js 15 App Router + Tailwind + React Query. Node 22, eslint, vitest.
-apps/runtime   The engineer runtime container (poll → clone → execute → push → report).
-docs/          Methodology, architecture, runtime protocol, harnesses, knowledge map, deploy.
+apps/runtime   The engineer runtime (poll → clone → execute → push → report) and the `gravel` CLI.
+apps/vscode    VS Code extension (TypeScript, plain tsc, no runtime dependencies).
+docs/          Methodology, architecture, runtime protocol, harnesses, knowledge map, local runners, deploy.
 ```
 
 ## Before you change anything
@@ -55,6 +56,7 @@ docs/          Methodology, architecture, runtime protocol, harnesses, knowledge
 cd apps/api && .venv/bin/ruff check . && .venv/bin/python -m pytest -q      # RUNTIME_MODE=simulated
 cd apps/runtime && .venv/bin/python -m pytest -q
 cd apps/web && npx tsc --noEmit && npm run lint && npm test && npm run build  # NEXT_PUBLIC_API_URL set
+cd apps/vscode && npm ci && npm run lint && npm test
 ```
 
 ## Things that are easy to get wrong

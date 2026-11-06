@@ -58,5 +58,18 @@ class EngineerRuntime(BaseModel):
     stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(nullable=False, default=True)
+    # "docker": a container the API launched. "local": a runner someone started
+    # on their own machine with `gravel work` (services/runners.py).
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="docker")
+    host_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    owner_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # Local runners: "mine" takes runs only from projects its owner owns, "org" from any
+    scope: Mapped[str] = mapped_column(String(20), nullable=False, default="org")
+    executor: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    @property
+    def online(self) -> bool:
+        from services.runners import is_online
+        return is_online(self)
 
     engineer: Mapped["Engineer"] = relationship("Engineer", back_populates="runtimes")

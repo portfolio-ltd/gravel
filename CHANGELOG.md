@@ -8,6 +8,24 @@ All notable changes to Gravel are recorded here. The format follows
 
 ### Added
 
+- Local runners and the `gravel` CLI: `gravel login` (device login approved at
+  `/cli`, or an API token), `projects`, `tasks`, `gates`, `approve`, `reject`,
+  and `gravel work`, which runs tasks on your machine with the Claude Code or
+  Codex CLI you're signed in to. Personal runners take runs only from your own
+  projects (`--team` for the organization); runners going quiet count as
+  offline. New `codex` executor; git over your own credentials (`--ssh`) and
+  PRs through `gh` when no GitHub token is set (#42)
+- API tokens (`grv_…`) under Settings → CLI & tokens, accepted wherever a
+  session token is, and device login for non-browser clients (#41)
+- Keyless projects: with no API key for the model and your runner online,
+  in-process stages, PRD parsing and chat, and code-graph overviews run through
+  your runner; key-less runs wait for your runner instead of simulating. The
+  usage ledger records this work as `runner/<model>` at no cost (#43)
+- VS Code extension (`apps/vscode`): sign in, projects and tasks, "Needs you"
+  with Approve / Request changes, task documents as markdown, start the runner (#44)
+- Migration `011` adds `api_tokens`, `device_authorizations`, `llm_jobs` and
+  local-runner columns on `engineer_runtimes`
+
 - Voice input: a microphone button on comments, gate notes, question answers,
   the PRD chat and body, and knowledge entries turns speech into text with the
   browser's Web Speech API (Chrome, Edge, Safari; hidden where unsupported).

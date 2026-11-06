@@ -124,6 +124,11 @@ picks a default and any workflow stage can pin a different one. See
   They poll the API, clone the repo, run an agentic CLI (`opencode`) against a
   task bundle in `.gravel/` (never committed), push the task branch, open PRs
   and report a structured result. See [docs/runtime-protocol.md](docs/runtime-protocol.md).
+- **Your own machine** — `gravel work` (the CLI in `apps/runtime`) runs tasks
+  on your laptop with the Claude Code or Codex CLI you're already signed in to,
+  against a hosted Gravel; no API key needed, and your credentials stay local.
+  A VS Code extension (`apps/vscode`) shows tasks and gates and starts the
+  runner. See [docs/local-runners.md](docs/local-runners.md).
 - **In-process executor** — when no runtime is online, the API runs each stage
   as one structured LLM call using the project owner's own key.
 - **Simulated mode** — with no API key at all, stages produce clearly-labelled

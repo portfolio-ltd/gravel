@@ -174,6 +174,10 @@ def _update_status(eng: Engineer) -> None:
         if eng.status == EngineerStatus.running:
             eng.status = EngineerStatus.stopped
         return
+    # A local runner that stopped heartbeating is a closed laptop, not a failure
+    if all(r.kind == "local" for r in active):
+        eng.status = EngineerStatus.running if any(r.online for r in active) else EngineerStatus.stopped
+        return
     stale_threshold = datetime.now(timezone.utc) - timedelta(seconds=STALE_HEARTBEAT_SECONDS)
     for rt in active:
         hb = rt.last_heartbeat_at

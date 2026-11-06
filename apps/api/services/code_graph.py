@@ -716,8 +716,8 @@ async def build(project_id: str, user_id: str) -> None:
 async def _build(project_id: str, user_id: str) -> None:
     from services.issues import github_token
     from services.llm import resolve_model
+    from services.runners import llm_keys
     from services.token_usage import record_usage
-    from services.users import get_plain_keys
 
     async with AsyncSessionLocal() as db:
         project = await db.get(Project, project_id)
@@ -731,7 +731,7 @@ async def _build(project_id: str, user_id: str) -> None:
         model = resolve_model(project=project)
         token = await github_token(db, org_id)
         user = await db.get(User, user_id)
-        keys = get_plain_keys(user) if user else {}
+        keys = await llm_keys(db, user)
     await ws_manager.broadcast(project_id, {"type": "code_graph.updated", "status": "building"})
 
     snapshot = await fetch_snapshot(repo_url, token, ref)

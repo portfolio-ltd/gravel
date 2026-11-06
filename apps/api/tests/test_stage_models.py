@@ -140,7 +140,9 @@ async def test_in_process_executor_uses_stage_model(client: AsyncClient, auth_he
         return LLMResult(text='{"outcome": "completed", "summary": "ok"}', model=model,
                          tokens_in=50_000, tokens_out=5_000)
 
-    monkeypatch.setattr(agent_svc, "get_plain_keys", lambda user: {"anthropic": "sk-test"})
+    async def fake_keys(db, user):
+        return {"anthropic": "sk-test"}
+    monkeypatch.setattr(agent_svc.runners, "llm_keys", fake_keys)
     monkeypatch.setattr(agent_svc, "call_llm", fake_call_llm)
 
     resp = await client.post("/api/workflows", json={"name": "In-process", "stages": [

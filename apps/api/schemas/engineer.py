@@ -32,6 +32,11 @@ class RuntimeOut(BaseModel):
     stopped_at: datetime | None
     last_heartbeat_at: datetime | None
     is_active: bool
+    kind: str = "docker"            # docker | local (`gravel work` on someone's machine)
+    host_label: str | None = None
+    executor: str | None = None
+    scope: str = "org"              # local runners: mine | org
+    online: bool = False            # local runners: active and heartbeating
 
     model_config = {"from_attributes": True}
 
