@@ -24,10 +24,9 @@ from models.sdlc import OpenQuestion, QuestionStatus
 from models.task import Task, TaskStatus
 from models.task_run import TaskComment, TaskRun, TaskRunLog, TaskRunOutcome, TaskRunPhase
 from models.user import User
-from services import orchestrator, sdlc, task_graph
+from services import orchestrator, runners, sdlc, task_graph
 from services.llm import LLMRefusal, LLMResult, call_llm, pick_provider, resolve_model
 from services.token_usage import record_usage
-from services.users import get_plain_keys
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +56,7 @@ async def run_agent(project_id: str, user_id: str) -> None:
             await task_graph.queue_task(db, task, project)
         await db.commit()
 
-        runtimes_active = await orchestrator.has_active_runtimes(db, project.organization_id)
+        runtimes_active = await orchestrator.has_active_runtimes(db, project.organization_id, project.owner_id)
 
     if not runtimes_active:
         await drain_project(project_id, user_id)
@@ -93,7 +92,15 @@ async def drain_project(project_id: str, user_id: str) -> None:
                 run, task, project = row
 
                 # If real runtimes came online, leave the queue to them.
-                if await orchestrator.has_active_runtimes(db, project.organization_id):
+                if await orchestrator.has_active_runtimes(db, project.organization_id, project.owner_id):
+                    break
+
+                user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+                keys = await runners.llm_keys(db, user)
+                # Keyless with a local runner set up: the run waits for that runner
+                # (it claims it when it comes online) instead of simulated output.
+                if not any(keys.get(p) for p in ("anthropic", "openai", "groq")) \
+                        and await runners.has_local_runner(db, user_id):
                     break
 
                 # NOTE: the drain deliberately ignores per-stage engineer
@@ -112,9 +119,6 @@ async def drain_project(project_id: str, user_id: str) -> None:
                 else:
                     task.status = orchestrator.PHASE_TASK_STATUS[run.phase]
                 await db.commit()
-
-                user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-                keys = get_plain_keys(user) if user else {}
 
                 artifacts = None
                 if stage:

@@ -2,13 +2,14 @@
 
 import { Suspense, useEffect, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { CheckCircle2, Cpu, Eye, EyeOff, Loader2, Lock, Mic, Palette, Settings, User } from "lucide-react"
+import { CheckCircle2, Cpu, Eye, EyeOff, Loader2, Lock, Mic, Palette, Settings, Terminal, User } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/contexts/AuthContext"
 import { usePreferences } from "@/contexts/PreferencesContext"
 import { useApiKeys, useSaveApiKeys, useUpdateUser } from "@/hooks/useUsers"
 import { useMeta } from "@/hooks/useSdlc"
 import AppearanceSettings from "@/components/settings/AppearanceSettings"
+import ApiTokensSettings from "@/components/settings/ApiTokensSettings"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Field, Input, Select } from "@/components/ui/form"
@@ -18,7 +19,7 @@ import type { ModelOption } from "@/types"
 import { cn, getInitials } from "@/lib/utils"
 import { DICTATION_LANGUAGES, getSpeechRecognition } from "@/lib/dictation"
 
-const TABS = ["appearance", "models", "profile"] as const
+const TABS = ["appearance", "models", "cli", "profile"] as const
 type Tab = (typeof TABS)[number]
 
 const PROVIDERS: { key: ModelOption["provider"]; label: string; placeholder: string; url: string }[] = [
@@ -260,10 +261,12 @@ function SettingsContent() {
         <TabsList className="mb-5">
           <TabsTrigger value="appearance" className="gap-1.5"><Palette className="h-3.5 w-3.5" /> Appearance</TabsTrigger>
           <TabsTrigger value="models" className="gap-1.5"><Cpu className="h-3.5 w-3.5" /> Models & keys</TabsTrigger>
+          <TabsTrigger value="cli" className="gap-1.5"><Terminal className="h-3.5 w-3.5" /> CLI &amp; tokens</TabsTrigger>
           <TabsTrigger value="profile" className="gap-1.5"><User className="h-3.5 w-3.5" /> Profile</TabsTrigger>
         </TabsList>
         <TabsContent value="appearance"><AppearanceSettings /></TabsContent>
         <TabsContent value="models"><ModelsTab /></TabsContent>
+        <TabsContent value="cli"><ApiTokensSettings /></TabsContent>
         <TabsContent value="profile"><ProfileTab /></TabsContent>
       </Tabs>
     </Page>

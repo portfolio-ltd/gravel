@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { apiFetch } from "./api"
+import { apiFetch, apiFetchLong } from "./api"
 import { ApiError } from "@/types"
 import { setTokens, clearTokens } from "./auth"
 
@@ -49,5 +49,48 @@ describe("apiFetch", () => {
     global.fetch = mock as unknown as typeof fetch
     await expect(apiFetch("/api/auth/login", { method: "POST" }, false)).rejects.toMatchObject({ status: 401, detail: "Invalid email or password." })
     expect(mock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("apiFetchLong", () => {
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } })
+
+  beforeEach(() => {
+    setTokens("test-token", "test-refresh")
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    global.fetch = realFetch
+    clearTokens()
+  })
+
+  it("asks for an async answer, then polls until the real response is ready", async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(json({ operation_id: "op1", status: "running", poll: "/api/operations/op1" }, 202))
+      .mockResolvedValueOnce(json({ id: "op1", status: "running", http_status: null, body: null }))
+      .mockResolvedValueOnce(json({ id: "op1", status: "done", http_status: 200, body: { task_titles: ["A"] } }))
+    global.fetch = mock as unknown as typeof fetch
+    const pending = apiFetchLong<{ task_titles: string[] }>("/api/prds/p/split", { method: "POST" })
+    await vi.runAllTimersAsync()
+    expect(await pending).toEqual({ task_titles: ["A"] })
+    expect((mock.mock.calls[0][1].headers as Record<string, string>).Prefer).toBe("respond-async")
+    expect(mock.mock.calls[2][0]).toMatch(/\/api\/operations\/op1$/)
+  })
+
+  it("turns a failed operation into the same ApiError a direct call would throw", async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(json({ operation_id: "op2", status: "running", poll: "/api/operations/op2" }, 202))
+      .mockResolvedValueOnce(json({ id: "op2", status: "done", http_status: 404, body: { detail: "PRD not found" } })) as unknown as typeof fetch
+    const pending = apiFetchLong("/api/prds/x/chat", { method: "POST" })
+    const assertion = expect(pending).rejects.toMatchObject({ status: 404, detail: "PRD not found" })
+    await vi.runAllTimersAsync()
+    await assertion
+  })
+
+  it("passes a direct answer straight through", async () => {
+    global.fetch = vi.fn().mockResolvedValue(json({ task_titles: ["B"] })) as unknown as typeof fetch
+    expect(await apiFetchLong("/api/prds/p/split", { method: "POST" })).toEqual({ task_titles: ["B"] })
   })
 })

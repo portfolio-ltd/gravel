@@ -59,10 +59,12 @@ async def test_full_stage_flow_with_checkpoint_and_review_gate(client: AsyncClie
 
     # Approve → Finalize runs and completes without a gate → task done
     await client.post(f"/api/task-runs/{run['id']}/approve", json={}, headers=auth_headers)
+    # The project row and its tasks are separate reads, so one poll can land between
+    # the background run's commit and the next — wait for the final state, not just "done"
     for _ in range(40):
         resp = await client.get(f"/api/projects/{pid}", headers=auth_headers)
         task = next(t for t in resp.json()["tasks"] if t["id"] == task_id)
-        if task["status"] == "done":
+        if task["status"] == "done" and resp.json()["progress"] == 100:
             break
         await asyncio.sleep(0.25)
     assert task["status"] == "done"

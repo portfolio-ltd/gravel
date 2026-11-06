@@ -15,6 +15,7 @@ from db.base import Base
 from db.session import engine
 from routers import (
     agent,
+    api_tokens,
     artifacts,
     auth,
     board,
@@ -26,9 +27,11 @@ from routers import (
     integrations,
     knowledge_map,
     links,
+    operations,
     organizations,
     prds,
     projects,
+    runners,
     sdlc,
     tags,
     task_runs,
@@ -37,6 +40,7 @@ from routers import (
     workflows,
     ws,
 )
+from services.async_operations import AsyncOperationsMiddleware
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,6 +68,8 @@ app = FastAPI(
 )
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
+# Added before CORS so CORS wraps it: the 202 a long request gets carries the CORS headers too
+app.add_middleware(AsyncOperationsMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
@@ -132,6 +138,9 @@ app.include_router(tags.router,        prefix=API)
 app.include_router(prds.router,        prefix=API)
 app.include_router(sdlc.router,        prefix=API)
 app.include_router(code_graph.router,  prefix=API)
+app.include_router(api_tokens.router,  prefix=API)
+app.include_router(runners.router,     prefix=API)
+app.include_router(operations.router,  prefix=API)
 app.include_router(harnesses.router,   prefix=API)
 app.include_router(knowledge_map.router, prefix=API)
 app.include_router(links.router,       prefix=API)

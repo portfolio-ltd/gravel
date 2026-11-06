@@ -10,13 +10,12 @@ from models.task import Task, TaskPriority, TaskStatus, TaskType
 from models.task_run import TaskComment
 from schemas.task_run import PollResponse
 from services import agent as agent_svc
-from services import code_graph, orchestrator, sdlc, subagents, task_graph
+from services import code_graph, orchestrator, runners, sdlc, subagents, task_graph
 from services import harness as harness_svc
 from services.llm import provider_for_model, resolve_model
 from services.parser import parse_prd
 from services.projects import get_project
 from services.sdlc import merge_ai_criteria
-from services.users import get_plain_keys
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -105,7 +104,7 @@ async def parse_prd_endpoint(body: ParseRequest, current_user: CurrentUser, org:
     if not p.prd_file_path:
         raise HTTPException(status_code=400, detail="Upload a PRD file first.")
 
-    keys = get_plain_keys(current_user)
+    keys = await runners.llm_keys(db, current_user)
     model = body.model or p.default_model
 
     raw_tasks, usage = await parse_prd(p.prd_file_path, model, keys)

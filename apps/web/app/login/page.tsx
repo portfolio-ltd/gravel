@@ -35,7 +35,10 @@ export default function LoginPage() {
     setLoading(true)
     const result = await login(email, password)
     setLoading(false)
-    if (result.ok) router.push("/home")
+    if (result.ok) {
+      const next = new URLSearchParams(window.location.search).get("next")
+      router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/home")
+    }
     else setError(result.error ?? "Login failed")
   }
 

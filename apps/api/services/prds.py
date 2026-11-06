@@ -16,9 +16,9 @@ from models.task import Task, TaskPriority, TaskType
 from models.task_run import CommentAuthorType
 from models.user import User
 from schemas.prd import PRDChatResponse
+from services import runners
 from services.llm import call_llm, pick_provider
 from services.token_usage import record_usage
-from services.users import get_plain_keys
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ async def add_comment(db: AsyncSession, prd: PRD, body: str,
 
 
 async def chat(db: AsyncSession, prd: PRD, user: User, message: str, model: str | None) -> PRDChatResponse:
-    keys = get_plain_keys(user)
+    keys = await runners.llm_keys(db, user)
     model = model or settings.DEFAULT_MODEL
     provider = pick_provider(keys, model)
     if provider is None:
@@ -127,7 +127,7 @@ def _parse_chat_output(text: str) -> tuple[str, str | None]:
 async def split(db: AsyncSession, prd: PRD, user: User, model: str | None) -> list[str]:
     """AI proposal of task titles from the PRD body (nothing persisted)."""
     from services.parser import parse_prd_text
-    keys = get_plain_keys(user)
+    keys = await runners.llm_keys(db, user)
     tasks, usage = await parse_prd_text(prd.body_markdown or prd.summary or prd.title,
                                         model or settings.DEFAULT_MODEL, keys)
     if usage:

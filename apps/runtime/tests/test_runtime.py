@@ -247,3 +247,128 @@ def test_claude_code_applies_the_harness_limits(claude_code, monkeypatch, tmp_pa
     monkeypatch.setattr(config, "claude_max_turns", 0)
     executor.run_claude_code(tmp_path, "anthropic", "claude-opus-5-5")
     assert "--max-turns" not in claude_code["cmd"] and executor.read_harness(tmp_path) == {}
+
+
+# ── Codex executor, local-runner git, keyless jobs, CLI ──────────────────────
+
+def test_codex_command_and_result(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(config, "dry_run", False)
+    monkeypatch.setattr(config, "codex_args", "--config model_reasoning_effort=high")
+    calls = {}
+
+    def fake_run(cmd, **kwargs):
+        calls.update(cmd=cmd, kwargs=kwargs)
+        Path(cmd[cmd.index("--output-last-message") + 1]).write_text('Done.\n{"outcome": "completed", "summary": "s"}')
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(executor.subprocess, "run", fake_run)
+    result = executor.run_codex(tmp_path, "openai", "gpt-5.5")
+    cmd = calls["cmd"]
+    assert cmd[:3] == ["codex", "exec", "--skip-git-repo-check"] and cmd[-1] == executor.SYSTEM_INSTRUCTIONS
+    assert cmd[cmd.index("--model") + 1] == "gpt-5.5" and "model_reasoning_effort=high" in cmd
+    assert result["outcome_type"] == "completed" and calls["kwargs"]["cwd"] == str(tmp_path)
+
+    executor.run_codex(tmp_path, "anthropic", "claude-opus-5-5")
+    assert "--model" not in calls["cmd"]  # not an OpenAI model → Codex's own default
+
+
+def test_select_model_explains_fallback_to_executor_default(monkeypatch):
+    monkeypatch.setattr(config, "model_provider", "openai")
+    monkeypatch.setattr(config, "model_name", "")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    provider, model, note = executor.select_model({"model": "claude-opus-5-5", "model_provider": "anthropic"})
+    assert (provider, model) == ("openai", "") and "default model" in note
+
+
+def test_ssh_clone_url_for_local_runners(monkeypatch):
+    monkeypatch.setattr(config, "github_token", "")
+    monkeypatch.setattr(config, "git_ssh", True)
+    assert workspace._authed_url("https://github.com/acme/shop.git") == "git@github.com:acme/shop.git"
+    monkeypatch.setattr(config, "github_token", "t0ken")
+    assert workspace._authed_url("https://github.com/acme/shop").startswith("https://x-access-token:t0ken@")
+
+
+def test_pull_request_through_gh_without_a_token(monkeypatch):
+    from gravel_runtime import github
+    monkeypatch.setattr(config, "github_token", "")
+    monkeypatch.setattr(github.shutil, "which", lambda name: "/usr/bin/gh")
+    seen = []
+
+    def fake_run(cmd, **kwargs):
+        seen.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "https://github.com/acme/shop/pull/7\n", "")
+
+    monkeypatch.setattr(github.subprocess, "run", fake_run)
+    url = github.create_or_get_pull_request("https://github.com/acme/shop", "gravel/task-1", "main", "T", "B")
+    assert url == "https://github.com/acme/shop/pull/7" and seen[0][:5] == ["gh", "pr", "create", "--repo", "acme/shop"]
+
+
+def test_jobs_answer_with_claude_and_codex(monkeypatch):
+    from gravel_runtime import jobs
+    job = {"id": "j1", "model": "claude-opus-5-5", "system": "Be brief.", "prompt": "Split this PRD",
+           "json_schema": {"type": "object"}, "max_tokens": 100}
+    seen = {}
+
+    def fake_claude(cmd, **kwargs):
+        seen["claude"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, json.dumps(
+            {"result": '{"tasks": []}', "usage": {"input_tokens": 5, "output_tokens": 2}}), "")
+
+    monkeypatch.setattr(config, "executor", "claude-code")
+    monkeypatch.setattr(jobs.subprocess, "run", fake_claude)
+    assert jobs.run_job(job) == {"text": '{"tasks": []}', "tokens_in": 5, "tokens_out": 2}
+    prompt = seen["claude"][2]
+    assert prompt.startswith("Be brief.") and "Split this PRD" in prompt and '"type": "object"' in prompt
+    assert seen["claude"][seen["claude"].index("--max-turns") + 1] == "1"
+
+    def fake_codex(cmd, **kwargs):
+        Path(cmd[cmd.index("--output-last-message") + 1]).write_text("an answer")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(config, "executor", "codex")
+    monkeypatch.setattr(jobs.subprocess, "run", fake_codex)
+    assert jobs.run_job(job) == {"text": "an answer"}
+    monkeypatch.setattr(config, "executor", "opencode")
+    assert "can't answer" in jobs.run_job(job)["error"]
+
+
+def test_cli_device_login_saves_private_credentials(monkeypatch, tmp_path: Path):
+    import httpx
+
+    from gravel_runtime import cli
+    monkeypatch.setenv("GRAVEL_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    polls = iter([{"status": "pending"}, {"status": "approved", "access_token": "grv_abc"}])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/auth/device/start":
+            return httpx.Response(200, json={"device_code": "dc", "user_code": "BCDF-GHJK",
+                                             "verification_uri": "https://g.test/cli",
+                                             "verification_uri_complete": "https://g.test/cli?code=BCDF-GHJK",
+                                             "interval": 1, "expires_in": 600})
+        if request.url.path == "/api/auth/device/token":
+            return httpx.Response(200, json=next(polls))
+        assert request.headers["Authorization"] == "Bearer grv_abc"
+        return httpx.Response(200, json={"name": "Ada", "email": "ada@example.com"})
+
+    args = cli.build_parser().parse_args(["login", "--server", "https://api.g.test", "--no-browser"])
+    assert cli.cmd_login(args, transport=httpx.MockTransport(handler)) == 0
+    path = tmp_path / "cfg" / "credentials.json"
+    assert json.loads(path.read_text()) == {"server": "https://api.g.test", "token": "grv_abc", "org_id": None}
+    assert oct(path.stat().st_mode & 0o777) == "0o600"
+
+
+def test_cli_tasks_show_what_they_wait_on(monkeypatch, tmp_path: Path, capsys):
+    import httpx
+
+    from gravel_runtime import cli
+    monkeypatch.setenv("GRAVEL_CONFIG_DIR", str(tmp_path))
+    cli.save_credentials({"server": "https://api.g.test", "token": "grv_abc"})
+    project = {"tasks": [
+        {"id": "a", "title": "Schema", "status": "in_progress", "position": 0, "depends_on": []},
+        {"id": "b", "title": "API", "status": "pending", "position": 1, "depends_on": ["a"]},
+    ]}
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=project))
+    cli.cmd_tasks(cli.build_parser().parse_args(["tasks", "p1"]), transport=transport)
+    out = capsys.readouterr().out
+    assert "API  (waiting on 1)" in out and "Schema\n" in out

@@ -14,7 +14,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Nothing below may query the API until the session is restored — otherwise
   // every query fires unauthenticated first and races the token refresh.
   useEffect(() => {
-    if (!isLoading && !user) router.replace("/login")
+    // Keep where they were going (e.g. a /cli?code=… device login link) for after sign-in
+    if (!isLoading && !user) {
+      router.replace(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`)
+    }
   }, [isLoading, user, router])
 
   if (isLoading || !user) {

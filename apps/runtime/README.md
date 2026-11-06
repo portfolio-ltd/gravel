@@ -1,5 +1,9 @@
 # Gravel engineer runtime
 
+> Running tasks on your own machine with your Claude Code or Codex login? Install
+> this package and use the `gravel` CLI (`gravel login`, `gravel work`) — see
+> [docs/local-runners.md](../../docs/local-runners.md).
+
 The worker behind an "engineer" in Gravel. The API launches one container per
 runtime (`apps/api/services/runtime_manager.py`); the container then loops:
 
@@ -11,7 +15,7 @@ runtime (`apps/api/services/runtime_manager.py`); the container then loops:
    never committed): task, stage instructions, comments, project context,
    knowledge base, questions, earlier stage documents, output contract
 5. execute the stage with `opencode`, Claude Code (`GRAVEL_EXECUTOR=claude-code`),
-   or one LLM call (`GRAVEL_EXECUTOR=llm`)
+   the Codex CLI (`GRAVEL_EXECUTOR=codex`), or one LLM call (`GRAVEL_EXECUTOR=llm`)
 6. collect the result from `.gravel/output/` (`result.json`, `<kind>.md`)
 7. for code-writing roles only (`build`, `custom`, legacy build/testing):
    commit, push, and open a PR after a successful build

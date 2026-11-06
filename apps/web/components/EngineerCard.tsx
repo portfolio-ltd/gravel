@@ -38,9 +38,13 @@ export default function EngineerCard({ engineer, onEdit }: Props) {
   const cfg = STATUS_CONFIG[engineer.status] ?? STATUS_CONFIG.idle
 
   const activeRuntime = engineer.runtimes.find((r) => r.is_active)
-  const isStale = activeRuntime?.last_heartbeat_at
-    ? Date.now() - new Date(activeRuntime.last_heartbeat_at).getTime() > 90_000
-    : false
+  // A local runner (`gravel work`) is started and stopped from its own machine
+  const localRunner = activeRuntime?.kind === "local" ? activeRuntime : engineer.runtimes.find((r) => r.kind === "local")
+  const isStale = activeRuntime?.kind === "local"
+    ? !activeRuntime.online
+    : activeRuntime?.last_heartbeat_at
+      ? Date.now() - new Date(activeRuntime.last_heartbeat_at).getTime() > 90_000
+      : false
 
   return (
     <div className="bg-background rounded-xl border shadow-sm hover:shadow-md transition-all overflow-hidden">
@@ -88,8 +92,16 @@ export default function EngineerCard({ engineer, onEdit }: Props) {
           <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{engineer.skills_markdown}</p>
         )}
 
+        {localRunner && (
+          <p className="mb-3 text-[11px] text-muted-foreground">
+            Runs on <b className="font-medium text-foreground">{localRunner.host_label ?? "a local machine"}</b> with {localRunner.executor ?? "an AI CLI"}
+            {" · "}{localRunner.scope === "mine" ? "its owner's projects" : "the whole organization"}
+            {" · "}<span className={localRunner.online ? "text-success" : ""}>{localRunner.online ? "online" : "offline — start it with gravel work"}</span>
+          </p>
+        )}
+
         <div className="flex items-center gap-2">
-          {engineer.status !== "running" ? (
+          {localRunner ? null : engineer.status !== "running" ? (
             <Button
               size="sm"
               className="h-7 text-xs flex-1"
@@ -124,7 +136,8 @@ export default function EngineerCard({ engineer, onEdit }: Props) {
         <div className="border-t bg-muted/30 p-3 space-y-1.5">
           {engineer.runtimes.map((rt) => (
             <div key={rt.id} className="flex items-center gap-2 text-xs">
-              <span className={cn("w-1.5 h-1.5 rounded-full", rt.is_active ? "bg-emerald-500" : "bg-slate-400")} />
+              <span className={cn("w-1.5 h-1.5 rounded-full", rt.is_active && (rt.kind !== "local" || rt.online) ? "bg-emerald-500" : "bg-slate-400")} />
+              {rt.kind === "local" && <span className="text-[10px] text-muted-foreground">{rt.host_label}</span>}
               <span className="text-muted-foreground">
                 {formatDistanceToNow(new Date(rt.started_at), { addSuffix: true })}
               </span>
@@ -150,7 +163,7 @@ export default function EngineerCard({ engineer, onEdit }: Props) {
                 >
                   <Square className="w-3 h-3" />
                 </button>
-              ) : (
+              ) : rt.kind === "local" ? null : (
                 <button
                   title="Restart runtime"
                   className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"

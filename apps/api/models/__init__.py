@@ -1,3 +1,5 @@
+from .api_token import ApiToken, DeviceAuthorization, LlmJob
+from .async_operation import AsyncOperation
 from .changelog import ChangelogEntry, ChangelogType
 from .code_graph import CodeGraph, CodeGraphStatus
 from .engineer import Engineer, EngineerRuntime, EngineerStatus
@@ -34,6 +36,7 @@ from .user import User, UserRole
 from .workflow import Workflow, WorkflowStage
 
 __all__ = [
+    "ApiToken", "DeviceAuthorization", "LlmJob", "AsyncOperation",
     "User", "UserRole",
     "Project", "ProjectStatus", "ProjectDesignFile",
     "Task", "TaskStatus", "TaskPriority", "TaskType",

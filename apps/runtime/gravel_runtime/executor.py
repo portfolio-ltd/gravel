@@ -1,4 +1,4 @@
-"""Task execution: opencode or Claude Code CLI (agentic, edits the repo) or a direct LLM call.
+"""Task execution: opencode, Claude Code or Codex CLI (agentic, edits the repo) or a direct LLM call.
 
 All paths end in the same result dict (see .gravel/OUTPUT_CONTRACT.md):
 outcome_type, summary, blocking_reason, plus optional structured stage
@@ -7,6 +7,7 @@ results — documents, acceptance criteria, questions, knowledge, verdict.
 import json
 import os
 import re
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -47,7 +48,8 @@ def select_model(payload: dict) -> tuple[str, str, str | None]:
     provider = payload.get("model_provider") or config.model_provider
     if provider != config.model_provider and not os.environ.get(PROVIDER_KEY_ENV.get(provider, "")):
         return config.model_provider, config.model_name, (
-            f"No {provider} API key in this runtime — using {config.model_name} instead of {model}."
+            f"No {provider} access in this runtime — using {config.model_name or 'the executor’s default model'} "
+            f"instead of {model}."
         )
     return provider, model, None
 
@@ -201,6 +203,34 @@ def run_claude_code(workspace: Path, provider: str, model: str) -> dict:
     return outcome
 
 
+def run_codex(workspace: Path, provider: str, model: str) -> dict:
+    """OpenAI's Codex CLI (`codex exec`), signed in with an API key or a ChatGPT account."""
+    if config.dry_run:
+        return {"outcome_type": "needs_human_input", "summary": "Dry run — no work executed.",
+                "blocking_reason": "Runtime launched with GRAVEL_DRY_RUN=true"}
+    last_message = workspace / ".gravel" / "output" / "last_message.txt"
+    last_message.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [config.codex_command, "exec", "--skip-git-repo-check", "--sandbox", config.codex_sandbox,
+           "--output-last-message", str(last_message)]
+    if model and provider == "openai":  # otherwise Codex uses its own default model
+        cmd += ["--model", model]
+    cmd += shlex.split(config.codex_args)
+    cmd.append(SYSTEM_INSTRUCTIONS)
+    try:
+        result = subprocess.run(cmd, cwd=str(workspace), capture_output=True, text=True, timeout=3600)
+    except subprocess.TimeoutExpired:
+        return _failed("Codex timed out after 60 minutes.")
+    except FileNotFoundError:
+        return _failed(f"Codex binary '{config.codex_command}' not found — install it and sign in (`codex login`).")
+    text = last_message.read_text() if last_message.exists() else result.stdout
+    if result.returncode != 0:
+        return _failed(f"Codex exited {result.returncode}", result.stderr or text or "")
+    parsed = _parse(text)
+    if parsed is None and not (workspace / ".gravel" / "output" / "result.json").exists():
+        return _failed("Executor produced no parseable result.", text or "no output")
+    return collect_outputs(workspace, parsed or {"outcome_type": "failed", "summary": ""})
+
+
 def _bundle_text(workspace: Path) -> str:
     base = workspace / ".gravel"
     parts = []
@@ -253,4 +283,6 @@ def execute(workspace: Path, provider: str | None = None, model: str | None = No
         return run_llm(workspace, provider, model)
     if config.executor == "claude-code":
         return run_claude_code(workspace, provider, model)
+    if config.executor == "codex":
+        return run_codex(workspace, provider, model)
     return run_opencode(workspace, provider, model)

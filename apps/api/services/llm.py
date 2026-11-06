@@ -69,6 +69,10 @@ def pick_provider(keys: dict, model: str) -> str | None:
         return "openai"
     if model.startswith("llama") and keys.get("groq"):
         return "groq"
+    # No key for this model's provider, but the user's own runner is online
+    # (services/runners.py llm_keys): it answers with the AI CLI it's signed in to
+    if keys.get("runner"):
+        return "runner"
     for provider in ("anthropic", "openai", "groq"):
         if keys.get(provider):
             return provider
@@ -98,6 +102,8 @@ async def call_llm(
     """
     if provider == "anthropic":
         return await _call_anthropic(model, keys, prompt, max_tokens, json_schema, effort, system)
+    if provider == "runner":
+        return await _call_runner(model, keys, prompt, max_tokens, json_schema, system)
 
     from openai import AsyncOpenAI
     base_url = GROQ_BASE_URL if provider == "groq" else None
@@ -115,6 +121,18 @@ async def call_llm(
         tokens_in=getattr(usage, "prompt_tokens", 0) or 0,
         tokens_out=getattr(usage, "completion_tokens", 0) or 0,
     )
+
+
+async def _call_runner(model: str, keys: dict, prompt: str, max_tokens: int,
+                       json_schema: dict | None, system: str | None) -> LLMResult:
+    from services.runners import run_job
+    job = await run_job(keys["runner"], model=model, prompt=prompt, system=system,
+                        json_schema=json_schema, max_tokens=max_tokens)
+    if job.status != "done":
+        raise RuntimeError(f"Your local runner could not answer: {job.error or 'no result'}")
+    # Prefixed so the usage ledger shows it and prices it at 0 (the runner's own subscription pays)
+    return LLMResult(text=job.result_text or "", model=f"runner/{model}",
+                     tokens_in=job.tokens_in or 0, tokens_out=job.tokens_out or 0)
 
 
 async def _call_anthropic(

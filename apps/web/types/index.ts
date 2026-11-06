@@ -166,6 +166,14 @@ export interface EngineerRuntime {
   stopped_at: string | null
   last_heartbeat_at: string | null
   is_active: boolean
+  /** docker: launched by the API · local: `gravel work` on someone's machine */
+  kind: "docker" | "local"
+  host_label: string | null
+  executor: string | null
+  /** Local runners: "mine" takes runs from projects its owner owns, "org" from any */
+  scope: "mine" | "org"
+  /** Local runners: active and heartbeating */
+  online: boolean
 }
 
 export interface Engineer {
@@ -705,4 +713,27 @@ export interface CodeGraph {
   error: string | null
   built_at: string | null
   updated_at: string
+}
+
+// ── API tokens and device login (CLI, editor extensions) ────────────────────
+
+export interface ApiToken {
+  id: string
+  name: string
+  prefix: string
+  last_used_at: string | null
+  expires_at: string | null
+  created_at: string
+}
+
+export interface ApiTokenCreated extends ApiToken {
+  /** The plaintext — shown once, never again */
+  token: string
+}
+
+export interface DeviceLogin {
+  user_code: string
+  client_name: string
+  status: "pending" | "approved" | "denied" | "consumed"
+  expires_at: string
 }

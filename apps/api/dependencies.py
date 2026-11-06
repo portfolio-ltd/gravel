@@ -47,6 +47,12 @@ async def get_current_user(
 ) -> User:
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    from services.api_tokens import TOKEN_PREFIX, user_for_token
+    if credentials.credentials.startswith(TOKEN_PREFIX):  # personal API token (CLI, editor clients)
+        user = await user_for_token(db, credentials.credentials)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid, expired or revoked API token")
+        return user
     user_id = decode_access_token(credentials.credentials)
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")

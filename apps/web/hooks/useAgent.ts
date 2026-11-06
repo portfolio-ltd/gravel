@@ -1,13 +1,13 @@
 "use client"
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { apiFetch, apiUpload } from "@/lib/api"
+import { apiFetch, apiFetchLong, apiUpload } from "@/lib/api"
 
 export function useParseAgent() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: { project_id: string; model?: string }) =>
-      apiFetch<{ tasks: Array<{ title: string; description: string; priority: string; type: string }> }>(
+      apiFetchLong<{ tasks: Array<{ title: string; description: string; priority: string; type: string }> }>(
         "/api/agent/parse",
         { method: "POST", body: JSON.stringify(data) }
       ),

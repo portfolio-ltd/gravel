@@ -32,3 +32,13 @@ class GravelClient:
 
     def post_outcome(self, run_id: str, outcome: dict) -> None:
         self._post(f"/api/agent/task-runs/{run_id}/outcome", outcome)
+
+    # Local runners only (gravel work)
+    def poll_next_job(self) -> dict | None:
+        return self._post("/api/agent/poll-next-job").get("job")
+
+    def post_job_result(self, job_id: str, result: dict) -> None:
+        self._post(f"/api/agent/jobs/{job_id}/result", result)
+
+    def stop_runner(self) -> None:
+        self._post("/api/agent/runner/stop")

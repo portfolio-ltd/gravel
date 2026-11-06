@@ -1,0 +1,248 @@
+{
+  "name": "gravel-vscode",
+  "displayName": "Gravel",
+  "description": "Gravel projects, tasks and gate decisions inside VS Code: approve or request changes, read a task's spec and plan, and start a local runner.",
+  "version": "0.1.0",
+  "publisher": "portfolio-ltd",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/portfolio-ltd/gravel",
+    "directory": "apps/vscode"
+  },
+  "homepage": "https://github.com/portfolio-ltd/gravel/tree/main/apps/vscode",
+  "bugs": "https://github.com/portfolio-ltd/gravel/issues",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "gravel",
+    "ai",
+    "agents",
+    "sdlc",
+    "spec-driven"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gravel",
+          "title": "Gravel",
+          "icon": "media/gravel.svg"
+        }
+      ]
+    },
+    "views": {
+      "gravel": [
+        {
+          "id": "gravel.gates",
+          "name": "Needs you"
+        },
+        {
+          "id": "gravel.projects",
+          "name": "Projects"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "gravel.projects",
+        "contents": "Sign in to see your Gravel projects and tasks.\n[Sign in](command:gravel.signIn)\n[Paste an API token](command:gravel.signInWithToken)",
+        "when": "!gravel.signedIn"
+      },
+      {
+        "view": "gravel.gates",
+        "contents": "Gate decisions waiting on you show up here once you sign in.",
+        "when": "!gravel.signedIn"
+      },
+      {
+        "view": "gravel.gates",
+        "contents": "Nothing is waiting on you.",
+        "when": "gravel.signedIn"
+      },
+      {
+        "view": "gravel.projects",
+        "contents": "No projects yet.\n[Open Gravel](command:gravel.openInBrowser)",
+        "when": "gravel.signedIn"
+      }
+    ],
+    "commands": [
+      {
+        "command": "gravel.signIn",
+        "title": "Sign In",
+        "category": "Gravel"
+      },
+      {
+        "command": "gravel.signInWithToken",
+        "title": "Sign In with API Token",
+        "category": "Gravel"
+      },
+      {
+        "command": "gravel.signOut",
+        "title": "Sign Out",
+        "category": "Gravel"
+      },
+      {
+        "command": "gravel.refresh",
+        "title": "Refresh",
+        "category": "Gravel",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "gravel.openTask",
+        "title": "Open Task",
+        "category": "Gravel"
+      },
+      {
+        "command": "gravel.openInBrowser",
+        "title": "Open in Browser",
+        "category": "Gravel",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "gravel.approve",
+        "title": "Approve",
+        "category": "Gravel",
+        "icon": "$(check)"
+      },
+      {
+        "command": "gravel.requestChanges",
+        "title": "Request Changes",
+        "category": "Gravel",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "gravel.startRunner",
+        "title": "Start Local Runner",
+        "category": "Gravel",
+        "icon": "$(play)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "gravel.openTask",
+          "when": "false"
+        },
+        {
+          "command": "gravel.approve",
+          "when": "false"
+        },
+        {
+          "command": "gravel.requestChanges",
+          "when": "false"
+        },
+        {
+          "command": "gravel.signOut",
+          "when": "gravel.signedIn"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "gravel.refresh",
+          "when": "view == gravel.projects || view == gravel.gates",
+          "group": "navigation"
+        },
+        {
+          "command": "gravel.startRunner",
+          "when": "view == gravel.projects",
+          "group": "navigation"
+        },
+        {
+          "command": "gravel.signOut",
+          "when": "(view == gravel.projects || view == gravel.gates) && gravel.signedIn"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "gravel.approve",
+          "when": "view == gravel.gates && viewItem == gate",
+          "group": "inline@1"
+        },
+        {
+          "command": "gravel.requestChanges",
+          "when": "view == gravel.gates && viewItem == gate",
+          "group": "inline@2"
+        },
+        {
+          "command": "gravel.approve",
+          "when": "view == gravel.gates && viewItem == gate",
+          "group": "1_gate@1"
+        },
+        {
+          "command": "gravel.requestChanges",
+          "when": "view == gravel.gates && viewItem == gate",
+          "group": "1_gate@2"
+        },
+        {
+          "command": "gravel.openTask",
+          "when": "viewItem == gate || viewItem == task",
+          "group": "2_open@1"
+        },
+        {
+          "command": "gravel.openInBrowser",
+          "when": "viewItem == gate || viewItem == task || viewItem == project",
+          "group": "2_open@2"
+        },
+        {
+          "command": "gravel.openInBrowser",
+          "when": "view == gravel.projects && viewItem == project",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Gravel",
+      "properties": {
+        "gravel.apiUrl": {
+          "type": "string",
+          "default": "https://api.trygravel.com",
+          "markdownDescription": "Base URL of the Gravel API (without `/api`). Tokens are stored per API URL."
+        },
+        "gravel.webUrl": {
+          "type": "string",
+          "default": "https://trygravel.com",
+          "description": "Base URL of the Gravel web app, used for Open in Browser."
+        },
+        "gravel.refreshSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 0,
+          "description": "Refresh the Gravel views every N seconds. 0 turns auto-refresh off."
+        },
+        "gravel.runnerExecutor": {
+          "type": "string",
+          "enum": [
+            "claude-code",
+            "codex",
+            "opencode"
+          ],
+          "default": "claude-code",
+          "markdownDescription": "Agent CLI the local runner (`gravel work --executor`) uses, with your own login."
+        },
+        "gravel.orgId": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Organization id to work in (sent as `X-Org-Id`). Empty uses your default organization."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "lint": "tsc --noEmit -p .",
+    "test": "tsc -p . && node --test out/test/*.test.js",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "@types/vscode": "~1.90.0",
+    "typescript": "^5.9.0"
+  }
+}
