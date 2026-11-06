@@ -21,10 +21,14 @@ All notable changes to Gravel are recorded here. The format follows
   in-process stages, PRD parsing and chat, and code-graph overviews run through
   your runner; key-less runs wait for your runner instead of simulating. The
   usage ledger records this work as `runner/<model>` at no cost (#43)
+- Long requests survive proxy timeouts: PRD parse, split and chat are sent with
+  `Prefer: respond-async`, answered with `202` and an operation the web app
+  polls (`GET /api/operations/{id}`), so a slow model or runner no longer hits
+  Cloudflare's 100-second limit
 - VS Code extension (`apps/vscode`): sign in, projects and tasks, "Needs you"
   with Approve / Request changes, task documents as markdown, start the runner (#44)
-- Migration `011` adds `api_tokens`, `device_authorizations`, `llm_jobs` and
-  local-runner columns on `engineer_runtimes`
+- Migration `011` adds `api_tokens`, `device_authorizations`, `llm_jobs`,
+  `async_operations` and local-runner columns on `engineer_runtimes`
 
 - Voice input: a microphone button on comments, gate notes, question answers,
   the PRD chat and body, and knowledge entries turns speech into text with the

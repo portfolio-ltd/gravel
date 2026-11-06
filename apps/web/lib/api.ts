@@ -75,6 +75,40 @@ export async function apiFetch<T = unknown>(
   return res.json() as Promise<T>
 }
 
+// ── Long requests ─────────────────────────────────────────────────────────────
+interface OperationStarted { operation_id: string; status: "running"; poll: string }
+interface Operation { id: string; status: "running" | "done" | "failed"; http_status: number | null; body: unknown }
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** A call that may outlast a proxy's timeout (Cloudflare drops requests after 100 s).
+ *  With `Prefer: respond-async` the API answers 202 with an operation id and runs the
+ *  request in the background; this polls until the real response is ready and then
+ *  behaves exactly like apiFetch (same result, same ApiError). An API that ignores the
+ *  header simply answers directly. */
+export async function apiFetchLong<T = unknown>(path: string, init: RequestInit = {}, maxWaitMs = 15 * 60_000): Promise<T> {
+  const first = await apiFetch<T | OperationStarted>(path, {
+    ...init,
+    headers: { ...(init.headers as object ?? {}), Prefer: "respond-async" },
+  })
+  const started = first as OperationStarted
+  if (!started || typeof started !== "object" || !started.operation_id || !started.poll) return first as T
+
+  const deadline = Date.now() + maxWaitMs
+  for (let delay = 1000; Date.now() < deadline; delay = Math.min(delay * 1.5, 5000)) {
+    await sleep(delay)
+    const op = await apiFetch<Operation>(started.poll)
+    if (op.status === "running") continue
+    const status = op.http_status ?? 500
+    if (status >= 400) {
+      const detail = (op.body as { detail?: unknown } | null)?.detail
+      throw new ApiError(status, typeof detail === "string" ? detail : `Request failed (${status})`)
+    }
+    return op.body as T
+  }
+  throw new ApiError(504, "Still working after 15 minutes — check back later")
+}
+
 // ── Multipart (file upload) ───────────────────────────────────────────────────
 export async function apiUpload<T = unknown>(path: string, formData: FormData): Promise<T> {
   const token = getAccessToken()

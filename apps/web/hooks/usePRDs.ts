@@ -1,7 +1,7 @@
 "use client"
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { apiFetch } from "@/lib/api"
+import { apiFetch, apiFetchLong } from "@/lib/api"
 import type { PRD, PRDChatResponse, PRDComment, PRDListItem, PRDStatus } from "@/types"
 
 export function usePRDs(status?: PRDStatus | "") {
@@ -57,7 +57,7 @@ export function usePRDChat() {
   const invalidate = useInvalidatePRDs()
   return useMutation({
     mutationFn: ({ prdId, message, model }: { prdId: string; message: string; model?: string }) =>
-      apiFetch<PRDChatResponse>(`/api/prds/${prdId}/chat`, { method: "POST", body: JSON.stringify({ message, model }) }),
+      apiFetchLong<PRDChatResponse>(`/api/prds/${prdId}/chat`, { method: "POST", body: JSON.stringify({ message, model }) }),
     onSuccess: (_, { prdId }) => invalidate(prdId),
   })
 }
@@ -74,7 +74,7 @@ export function useAddPRDComment() {
 export function usePRDSplit() {
   return useMutation({
     mutationFn: (prdId: string) =>
-      apiFetch<{ task_titles: string[] }>(`/api/prds/${prdId}/split`, { method: "POST" }),
+      apiFetchLong<{ task_titles: string[] }>(`/api/prds/${prdId}/split`, { method: "POST" }),
   })
 }
 

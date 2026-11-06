@@ -80,6 +80,15 @@ producing simulated output, and start as soon as it comes online.
 The usage ledger records this work as `runner/<model>` at no cost, since your
 own subscription pays for it.
 
+**Long requests behind a proxy.** A model call answered by your runner (or a
+big model with a key) can take longer than a proxy allows — Cloudflare drops a
+request after 100 s. The web app therefore sends PRD parsing, splitting and
+chat with `Prefer: respond-async`: the API answers `202 {operation_id, poll}`
+at once, runs the request in the background, and `GET /api/operations/{id}`
+returns its status code and body when it's done (kept for a day). Requests
+without the header behave as before. Only the paths in
+`apps/api/services/async_operations.py` (`ASYNC_PATHS`) can run this way.
+
 ## Before you rely on a subscription
 
 Check your AI provider's terms for using a subscription this way. Gravel never

@@ -1,4 +1,5 @@
-"""Local runners: API tokens, device login, local engineer runtimes, runner LLM jobs
+"""Local runners: API tokens, device login, local engineer runtimes, runner LLM jobs,
+async operations for long requests
 
 Revision ID: 011
 Revises: 010
@@ -71,9 +72,21 @@ def upgrade() -> None:
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         *_timestamps(),
     )
+    op.create_table(
+        "async_operations",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("user_id", sa.String(36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column("method", sa.String(10), nullable=False),
+        sa.Column("path", sa.String(500), nullable=False),
+        sa.Column("status", sa.String(20), nullable=False, server_default="running"),
+        sa.Column("http_status", sa.Integer, nullable=True),
+        sa.Column("body", sa.JSON, nullable=True),
+        *_timestamps(),
+    )
 
 
 def downgrade() -> None:
+    op.drop_table("async_operations")
     op.drop_table("llm_jobs")
     with op.batch_alter_table("engineer_runtimes") as b:
         for column in ("executor", "scope", "owner_user_id", "host_label", "kind"):
