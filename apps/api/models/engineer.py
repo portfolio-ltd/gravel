@@ -66,6 +66,9 @@ class EngineerRuntime(BaseModel):
     # Local runners: "mine" takes runs only from projects its owner owns, "org" from any
     scope: Mapped[str] = mapped_column(String(20), nullable=False, default="org")
     executor: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Local runners: which AI account the CLI on that machine is signed in to
+    # (`gravel work --account work`), so projects can be pinned to it
+    account_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     @property
     def online(self) -> bool:

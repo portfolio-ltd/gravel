@@ -44,23 +44,29 @@ export default function AskBox({ onOpenTask, className }: {
         method: "POST", body: JSON.stringify({ title, description }),
       })
       let startError: string | null = null
+      let waitingFor: string | null = null
       if (start) {
         try {
-          await apiFetch(`/api/projects/${projectId}/tasks/${task.id}/start`, { method: "POST" })
+          const res = await apiFetch<{ executor: string; account?: string; account_online?: boolean }>(
+            `/api/projects/${projectId}/tasks/${task.id}/start`, { method: "POST" })
+          if (res.executor === "account" && !res.account_online) {
+            waitingFor = res.account ?? null
+          }
         } catch (e) {
           startError = errorDetail(e, "Could not start it")
         }
       }
-      return { task, start, startError }
+      return { task, start, startError, waitingFor }
     },
-    onSuccess: ({ task, start, startError }) => {
+    onSuccess: ({ task, start, startError, waitingFor }) => {
       setText("")
       rememberProject(projectId)
       for (const key of ["tasks", "project", "projects", "board", "running", "metrics"]) {
         qc.invalidateQueries({ queryKey: [key] })
       }
       const open = { label: "Open", onClick: () => onOpenTask(task.project_id, task.id) }
-      if (startError) toast.warning(`Task added, but not started: ${startError}`, { action: open })
+      if (waitingFor) toast.info(`Queued for the '${waitingFor}' account. Start: gravel work --account ${waitingFor}`, { action: open })
+      else if (startError) toast.warning(`Task added, but not started: ${startError}`, { action: open })
       else toast.success(start ? "Task added and queued" : "Task added to the backlog", { action: open })
     },
     onError: (e) => toast.error(errorDetail(e, "Could not add the task")),

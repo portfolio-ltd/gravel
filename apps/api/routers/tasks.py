@@ -82,7 +82,7 @@ async def start(project_id: str, task_id: str, background_tasks: BackgroundTasks
     from models.project import ProjectStatus
     from models.task import TaskStatus
     from services import agent as agent_svc
-    from services import orchestrator, task_graph
+    from services import orchestrator, runners, task_graph
 
     p = await _project_or_404(project_id, db, org.id)
     task = await get_task(db, task_id, project_id)
@@ -99,8 +99,14 @@ async def start(project_id: str, task_id: str, background_tasks: BackgroundTasks
     if p.status == ProjectStatus.setup:
         p.status = ProjectStatus.running
     runtimes = await orchestrator.has_active_runtimes(db, p.organization_id, p.owner_id)
+    account_up = (await runners.account_online(db, p.organization_id, p.owner_id, p.runner_account)
+                  if p.runner_account else None)
     await db.commit()
     await ws_manager.broadcast(project_id, {"type": "task.updated", "task": {"id": task.id, "status": task.status.value}})
+    if p.runner_account:
+        # Pinned: it waits for a runner signed in to that account (the drain leaves it alone)
+        return {"detail": "Task queued", "task_id": task.id, "executor": "account",
+                "account": p.runner_account, "account_online": account_up}
     if not runtimes:
         # An existing drain for this project picks the new run up on its next loop
         background_tasks.add_task(agent_svc.drain_project, project_id, current_user.id)

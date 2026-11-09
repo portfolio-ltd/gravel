@@ -49,6 +49,7 @@ Other commands: `gravel whoami`, `gravel projects`, `gravel tasks PROJECT_ID`,
 | `--team` | off | Take runs from the whole organization, not just projects you own |
 | `--ssh` | off | Clone GitHub repos over SSH with your own keys |
 | `--workdir` | `~/.cache/gravel/work` | Where task checkouts go |
+| `--account` | none | Label for the AI account the CLI is signed in to (env `GRAVEL_ACCOUNT`); see *Several AI accounts* |
 | `--once` | off | Take at most one run, then exit |
 
 **Whose work it takes.** A runner is personal by default: it only claims runs
@@ -63,6 +64,42 @@ no `GRAVEL_GITHUB_TOKEN` is set.
 sandbox) and reads the final message from `--output-last-message`. Extra flags
 go in `GRAVEL_CODEX_ARGS`. A Gravel model that isn't an OpenAI model is not
 passed through, so Codex uses its own default.
+
+## Several AI accounts
+
+Claude Code and Codex each keep their login in a directory you can choose:
+`CLAUDE_CONFIG_DIR` for Claude Code, `CODEX_HOME` for Codex. `gravel work`
+passes your environment to the CLI, so you can run one runner per account on
+the same machine, each labelled with `--account`:
+
+```bash
+# sign each account in once
+CLAUDE_CONFIG_DIR=~/.claude-work  claude        # then /login with the work account
+CODEX_HOME=~/.codex-personal      codex login
+
+# one runner per account (separate terminals)
+CLAUDE_CONFIG_DIR=~/.claude-work  gravel work --executor claude-code --account work
+CODEX_HOME=~/.codex-personal      gravel work --executor codex       --account personal
+```
+
+- Labels are case-insensitive (`Work` and `work` are the same account).
+- Without `--name`, the runner is named `<hostname> (<account>)`. That way two
+  runners on one machine don't retire each other when they start.
+- **Pin a project** under its **Settings → Runs on**: only runners with that
+  label take its runs. Docker runtimes, unlabelled runners, other accounts and
+  the in-process executor all leave them alone. If no runner for the account
+  is online, the runs wait in the queue. A labelled runner still takes
+  unpinned work.
+- **Engineers → AI accounts** groups your runners by person and account, with
+  the projects pinned to each and their runs, agent time and tokens over the
+  last 7 days. Subscription usage is recorded at $0, so there is no cost
+  column. Each run records the account that claimed it
+  (`task_runs.runner_account`).
+- Keyless model calls (PRD parsing and chat, code-graph overviews) are not
+  tied to a project, so any of your online runners answers them.
+
+Using several accounts doesn't change what each provider allows. Check their
+terms, especially before using one person's plan to serve a team (`--team`).
 
 ## Keyless projects
 
@@ -115,8 +152,13 @@ See [apps/vscode/README.md](../apps/vscode/README.md) for installing it.
 | `POST /api/runners/register` | user | Become a local runner → runtime token |
 | `POST /api/agent/poll-next-job`, `POST /api/agent/jobs/{id}/result` | runtime | Take and answer a keyless model call |
 | `POST /api/agent/runner/stop` | runtime | Go offline |
+| `GET /api/overview/accounts` | user | Local runners by person and AI account, pinned projects, last-7-days usage |
+| `PATCH /api/projects/{id}` `{runner_account}` | user | Pin a project to an account (`""` or `null` unpins) |
 
 API tokens (`grv_…`) are accepted anywhere a session token is, stored only as
 SHA-256 hashes, and can expire. Migration `011` adds `api_tokens`,
 `device_authorizations`, `llm_jobs` and the local-runner columns on
 `engineer_runtimes` (`kind`, `host_label`, `owner_user_id`, `scope`, `executor`).
+
+Migration `012` adds `engineer_runtimes.account_label`, `projects.runner_account`
+and `task_runs.runner_account`.

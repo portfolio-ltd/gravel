@@ -72,6 +72,8 @@ class TaskRun(BaseModel):
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Snapshot of the claiming runner's account label (runners come and go; this stays)
+    runner_account: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     task: Mapped["Task"] = relationship("Task", back_populates="runs")
     logs: Mapped[list["TaskRunLog"]] = relationship(

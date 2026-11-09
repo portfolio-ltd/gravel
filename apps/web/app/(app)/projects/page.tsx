@@ -22,6 +22,7 @@ import { Pipeline, stagesFromWorkflow } from "@/components/workflow/Pipeline"
 import CodeGraphPanel from "@/components/graph/CodeGraphPanel"
 import TaskGraph from "@/components/graph/TaskGraph"
 import LinksPanel from "@/components/LinksPanel"
+import RunnerAccountSettings from "@/components/RunnerAccountSettings"
 import { useProjects, useProject, useDeleteProject, useAdvanceProject, useUpdateProject } from "@/hooks/useProjects"
 import { useWorkflows } from "@/hooks/useWorkflows"
 import { useTasks, useUpdateTask, useDeleteTask, useCreateTask } from "@/hooks/useTasks"
@@ -531,6 +532,7 @@ function ProjectDetail({ projectId }: { projectId: string }) {
         <TabsContent value="settings" className="space-y-4">
           <WorkflowSettings project={project} />
           <ModelSettings project={project} />
+          <RunnerAccountSettings project={project} />
           <RepoSettings key={`${project.repo_url}-${project.default_branch}`} project={project} />
         </TabsContent>
       </Tabs>

@@ -51,7 +51,11 @@ function RunRow({ run, now, onOpen }: { run: RunningRun; now: number; onOpen: ()
 
   let status: React.ReactNode
   if (!running) {
-    status = <span className="flex items-center gap-1"><Hourglass className="h-3 w-3" /> Queued {formatDuration(elapsed)}</span>
+    status = (
+      <span className="flex items-center justify-end gap-1" title={run.runner_account ? `Waiting for a runner signed in to '${run.runner_account}'` : undefined}>
+        <Hourglass className="h-3 w-3" /> Queued {formatDuration(elapsed)}
+      </span>
+    )
   } else if (quietFor !== null) {
     status = <span className="flex items-center gap-1 text-warning"><WifiOff className="h-3 w-3" /> No heartbeat for {formatDuration(quietFor)}</span>
   } else if (run.typical_seconds) {
@@ -71,8 +75,9 @@ function RunRow({ run, now, onOpen }: { run: RunningRun; now: number; onOpen: ()
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{run.task_title}</p>
           <p className="truncate text-xs text-muted-foreground">
-            {[run.engineer_name ?? "Waiting for an engineer", step && `${step} · ${stageLabel(run.stage_name)}`, run.project_name,
-              run.attempt_number > 1 && `attempt ${run.attempt_number}`].filter(Boolean).join(" · ")}
+            {[run.engineer_name ?? (run.runner_account ? `Waiting for a ${run.runner_account} runner` : "Waiting for an engineer"), step && `${step} · ${stageLabel(run.stage_name)}`, run.project_name,
+              run.attempt_number > 1 && `attempt ${run.attempt_number}`,
+              run.engineer_name && run.runner_account && `${run.runner_account} account`].filter(Boolean).join(" · ")}
           </p>
         </div>
         <div className="w-28 shrink-0 space-y-1.5 text-right sm:w-40">

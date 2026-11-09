@@ -8,6 +8,16 @@ All notable changes to Gravel are recorded here. The format follows
 
 ### Added
 
+- AI accounts for local runners: `gravel work --account <label>` (or
+  `GRAVEL_ACCOUNT`) labels a runner with the Claude or ChatGPT account its CLI
+  is signed in to. Use one runner per account with `CLAUDE_CONFIG_DIR` or
+  `CODEX_HOME`. A project can be pinned to an account (Settings → Runs on).
+  Only runners with that label then take its runs, and nothing runs for it
+  in-process. Engineers → AI accounts shows runners, pinned projects and
+  last-7-days runs, time and tokens per account (`GET /api/overview/accounts`).
+  Running now shows the account. Migration `012` adds
+  `engineer_runtimes.account_label`, `projects.runner_account` and
+  `task_runs.runner_account`
 - Home: an "Ask your engineers" box. Type or dictate a request, pick a
   project, then **Add task** or **Add & start**. A sidebar **Recent** section
   lists the projects you opened last. New

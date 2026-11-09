@@ -10,6 +10,11 @@ A local runner is personal by default: it takes runs only from projects its
 owner owns (scope "mine"); `--team` makes it serve the whole organization.
 A runner that stops heartbeating counts as offline after RUNNER_STALE.
 
+Accounts: `gravel work --account work` labels a runner with the AI account its
+CLI is signed in to. A project pinned to an account (`Project.runner_account`)
+is only worked on by runners with that label; nothing else — Docker
+runtimes, other runners, the in-process executor — takes its runs.
+
 Keyless projects: when a user has no API key for a model but has a runner
 online, server-side model calls (in-process stages, PRD parsing and chat,
 code-graph summaries) become LlmJobs that the runner executes
@@ -34,6 +39,12 @@ RUNNER_STALE = timedelta(seconds=180)
 EXECUTOR_PROVIDERS = {"claude-code": "anthropic", "codex": "openai", "opencode": "anthropic"}
 
 
+def normalize_account(label: str | None) -> str | None:
+    """Account labels compare case-insensitively: "Work " and "work" are the same account."""
+    label = " ".join((label or "").split()).lower()[:100]
+    return label or None
+
+
 def _aware(dt: datetime | None) -> datetime | None:
     return dt.replace(tzinfo=timezone.utc) if dt is not None and dt.tzinfo is None else dt
 
@@ -54,7 +65,7 @@ def serves_owner(runtime: EngineerRuntime, project_owner_id: str | None) -> bool
 
 async def register(db: AsyncSession, user: User, organization_id: str, *, host_label: str,
                    executor: str, scope: str, engineer_id: str | None = None,
-                   engineer_name: str | None = None) -> tuple[EngineerRuntime, Engineer, str]:
+                   engineer_name: str | None = None, account: str | None = None) -> tuple[EngineerRuntime, Engineer, str]:
     """Create a local runtime (and its engineer when needed). Returns (runtime, engineer, plaintext token)."""
     if executor not in EXECUTOR_PROVIDERS:
         raise HTTPException(400, f"Unknown executor '{executor}'. Use one of: {', '.join(EXECUTOR_PROVIDERS)}")
@@ -97,7 +108,9 @@ async def register(db: AsyncSession, user: User, organization_id: str, *, host_l
         engineer_id=engineer.id, kind="local", host_label=host_label, owner_user_id=user.id,
         scope=scope, executor=executor, runtime_token_hash=hash_runtime_token(token),
         started_at=now, last_heartbeat_at=now, is_active=True,
-        status_message=f"Local runner on {host_label} ({executor})",
+        account_label=normalize_account(account),
+        status_message=f"Local runner on {host_label} ({executor}"
+                       + (f", account {normalize_account(account)})" if normalize_account(account) else ")"),
     )
     db.add(runtime)
     engineer.status = EngineerStatus.running
@@ -206,6 +219,23 @@ async def complete_job(db: AsyncSession, runtime: EngineerRuntime, job_id: str, 
     job.completed_at = datetime.now(timezone.utc)
     await db.flush()
     return job
+
+
+def serves_account(runtime: EngineerRuntime, runner_account: str | None) -> bool:
+    """May this runtime take runs of a project pinned to `runner_account`?"""
+    return runner_account is None or (runtime.kind == "local" and runtime.account_label == runner_account)
+
+
+async def account_online(db: AsyncSession, organization_id: str, project_owner_id: str | None, account: str) -> bool:
+    """Is a runner signed in to `account` online and allowed to take this owner's runs?"""
+    rows = (await db.execute(
+        select(EngineerRuntime).join(Engineer, Engineer.id == EngineerRuntime.engineer_id).where(
+            Engineer.organization_id == organization_id, EngineerRuntime.kind == "local",
+            EngineerRuntime.is_active.is_(True), EngineerRuntime.account_label == account,
+        )
+    )).scalars()
+    now = datetime.now(timezone.utc)
+    return any(is_online(r, now) and serves_owner(r, project_owner_id) for r in rows)
 
 
 def runtime_filter_for_owner(project_owner_id: str | None):

@@ -99,6 +99,9 @@ async def update_project(db: AsyncSession, project: Project, data: ProjectUpdate
         project.workflow_id = data.workflow_id
     if "issues_repo" in data.model_fields_set:
         project.issues_repo = normalize_repo(data.issues_repo) if data.issues_repo else None
+    if "runner_account" in data.model_fields_set:
+        from services.runners import normalize_account
+        project.runner_account = normalize_account(data.runner_account)
     if data.post_issue_comments is not None:
         project.post_issue_comments = data.post_issue_comments
     db.add(project)

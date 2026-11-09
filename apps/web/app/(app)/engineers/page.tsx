@@ -5,6 +5,7 @@ import { Bot, Plus, X } from "lucide-react"
 import { useEngineers, useCreateEngineer, useUpdateEngineer } from "@/hooks/useEngineers"
 import { useMeta } from "@/hooks/useSdlc"
 import EngineerCard from "@/components/EngineerCard"
+import RunnerAccounts from "@/components/RunnerAccounts"
 import { Button } from "@/components/ui/button"
 import type { Engineer, EngineerCreate } from "@/types"
 
@@ -172,6 +173,8 @@ export default function EngineersPage() {
             <Plus className="w-3.5 h-3.5" /> New engineer
           </Button>
         </div>
+
+        <RunnerAccounts />
 
         {isLoading ? (
           <div className="text-sm text-muted-foreground">Loading engineers…</div>

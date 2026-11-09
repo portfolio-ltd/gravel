@@ -41,6 +41,8 @@ export interface Project {
   workflow_id: string | null
   issues_repo: string | null
   post_issue_comments: boolean
+  /** Only local runners signed in to this AI account take the project's runs; null = any engineer */
+  runner_account: string | null
   created_at: string
   updated_at: string
   design_files: DesignFile[]
@@ -174,6 +176,8 @@ export interface EngineerRuntime {
   scope: "mine" | "org"
   /** Local runners: active and heartbeating */
   online: boolean
+  /** Local runners: the AI account label from `gravel work --account` */
+  account_label: string | null
 }
 
 export interface Engineer {
@@ -304,6 +308,21 @@ export interface RunningRun {
   stale: boolean
   /** Median duration of recent finished runs of this stage; null without enough history */
   typical_seconds: number | null
+  /** Account running it, or the account a pinned project is waiting for */
+  runner_account: string | null
+}
+
+/** GET /api/overview/accounts: local runners grouped by person and AI account. */
+export interface AccountUsage {
+  /** null: runners started without --account */
+  account: string | null
+  owner_id: string
+  owner_name: string
+  runners: { host_label: string | null; executor: string | null; online: boolean; scope: "mine" | "org" }[]
+  pinned_projects: string[]
+  runs_week: number
+  agent_seconds_week: number
+  tokens_week: number
 }
 
 export interface WorkspaceMetrics {
