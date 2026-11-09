@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Kanban, Loader2 } from "lucide-react"
 import { useBoard, useAttentionTasks } from "@/hooks/useBoard"
@@ -11,6 +11,7 @@ import KanbanBoard from "@/components/KanbanBoard"
 import BoardCustomize from "@/components/sdlc/BoardCustomize"
 import { PageHeader } from "@/components/ui/page"
 import { Select } from "@/components/ui/form"
+import { rememberProject } from "@/lib/recentProjects"
 import { cn } from "@/lib/utils"
 
 export default function BoardPage() {
@@ -33,6 +34,7 @@ function Board() {
     else params.delete("project")
     router.replace(params.size ? `${pathname}?${params}` : pathname, { scroll: false })
   }
+  useEffect(() => { if (selectedProjectId) rememberProject(selectedProjectId) }, [selectedProjectId])
   const [tagFilter, setTagFilter] = useState<string>("")
   const { data: board, isLoading } = useBoard(selectedProjectId || undefined)
   // Live updates: stage changes, gate outcomes and new documents refresh the

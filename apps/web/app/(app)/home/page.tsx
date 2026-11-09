@@ -17,6 +17,7 @@ import { useWorkflows } from "@/hooks/useWorkflows"
 import WorkspaceMetrics from "@/components/WorkspaceMetrics"
 import EngineerAvatar from "@/components/EngineerAvatar"
 import TaskOpener from "@/components/TaskOpener"
+import AskBox from "@/components/home/AskBox"
 import RunningNow from "@/components/home/RunningNow"
 import GateActions from "@/components/sdlc/GateActions"
 import { Button } from "@/components/ui/button"
@@ -257,8 +258,8 @@ export default function HomePage() {
 
   return (
     <Page wide>
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+      <div className="mb-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,34rem)] lg:items-start">
+        <div className="min-w-0">
           <p className="text-sm text-muted-foreground">{format(now, "EEEE, MMMM d")}</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">
             {greeting(now.getHours())}, {user?.name?.split(" ")[0] ?? "there"}
@@ -266,14 +267,15 @@ export default function HomePage() {
           <p className="mt-1.5 text-sm text-muted-foreground">
             {attention && running ? statusLine(attention.length, inFlight, queued) : "\u00a0"}
           </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCustomizing((v) => !v)}>
+              <LayoutGrid className="h-3.5 w-3.5" /> {customizing ? "Done" : "Customize"}
+            </Button>
+            <Link href="/board"><Button variant="outline" size="sm"><Kanban className="h-3.5 w-3.5" /> Board</Button></Link>
+            <Link href="/projects?new=1"><Button variant="outline" size="sm"><Plus className="h-3.5 w-3.5" /> New project</Button></Link>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => setCustomizing((v) => !v)}>
-            <LayoutGrid className="h-3.5 w-3.5" /> {customizing ? "Done" : "Customize"}
-          </Button>
-          <Link href="/board"><Button variant="outline" size="sm"><Kanban className="h-3.5 w-3.5" /> Board</Button></Link>
-          <Link href="/projects?new=1"><Button size="sm"><Plus className="h-3.5 w-3.5" /> New project</Button></Link>
-        </div>
+        <AskBox onOpenTask={(projectId, taskId) => setOpenTask({ projectId, taskId })} />
       </div>
 
       <GettingStarted />
