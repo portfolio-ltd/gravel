@@ -38,7 +38,8 @@ export interface Preferences {
     compactCards: boolean
     hiddenColumns: string[]
   }
-  home: { widgets: string[] }
+  /** `known`: widget ids this user has been offered, so new widgets can be added to old layouts once */
+  home: { widgets: string[]; known?: string[] }
 }
 
 export interface OrgAppearance {
@@ -63,8 +64,9 @@ export const ACCENT_PRESETS: { name: string; hex: string }[] = [
 export const DEFAULT_ACCENT = "#7c3aed"
 
 export const HOME_WIDGETS = [
-  { id: "metrics", label: "Workspace metrics" },
-  { id: "attention", label: "Needs your attention" },
+  { id: "metrics", label: "This week" },
+  { id: "attention", label: "Needs your approval" },
+  { id: "running", label: "Running now" },
   { id: "pipeline", label: "Pipeline at a glance" },
   { id: "projects", label: "Active projects" },
   { id: "knowledge", label: "Knowledge to review" },
@@ -86,7 +88,24 @@ export const DEFAULT_PREFERENCES: Preferences = {
     compactCards: false,
     hiddenColumns: [],
   },
-  home: { widgets: HOME_WIDGETS.map((w) => w.id) },
+  home: { widgets: HOME_WIDGETS.map((w) => w.id), known: HOME_WIDGETS.map((w) => w.id) },
+}
+
+// Layouts saved before `known` existed were offered exactly these
+const LEGACY_HOME_WIDGETS = ["metrics", "attention", "pipeline", "projects", "knowledge"]
+
+/** Keep a saved widget layout, slotting in widgets added since it was saved (after the ones before them). */
+export function normalizeHomeWidgets(raw: Partial<Preferences["home"]> | undefined): Preferences["home"] {
+  if (!raw || !Array.isArray(raw.widgets)) return DEFAULT_PREFERENCES.home
+  const known = Array.isArray(raw.known) ? raw.known : LEGACY_HOME_WIDGETS
+  const widgets = [...raw.widgets]
+  const all = HOME_WIDGETS.map((w) => w.id as string)
+  for (const id of all) {
+    if (known.includes(id) || widgets.includes(id)) continue
+    const before = all.slice(0, all.indexOf(id)).reverse().find((b) => widgets.includes(b))
+    widgets.splice(before ? widgets.indexOf(before) + 1 : 0, 0, id)
+  }
+  return { widgets, known: all }
 }
 
 export const STORAGE_KEY = "gravel.preferences"
@@ -103,7 +122,7 @@ export function normalizePreferences(raw: unknown): Preferences {
       ...(p.board ?? {}),
       cardFields: { ...DEFAULT_PREFERENCES.board.cardFields, ...(p.board?.cardFields ?? {}) },
     },
-    home: { widgets: Array.isArray(p.home?.widgets) ? p.home!.widgets : DEFAULT_PREFERENCES.home.widgets },
+    home: normalizeHomeWidgets(p.home),
   }
 }
 

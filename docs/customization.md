@@ -19,6 +19,29 @@ Preferences apply instantly, are cached locally (so pages never flash the
 wrong theme), and sync to `PUT /api/users/me/preferences` so they follow you
 across devices.
 
+## Home dashboard
+
+Home shows what the engineers are doing and what is waiting on you. Every
+figure comes from recorded runs; nothing is estimated from outside data.
+
+- **This week**: four cards for the last 7 days, each compared with the 7
+  days before. *Waiting for you* counts open human gates and how long the
+  oldest has waited. *Stages finished* counts runs that completed their stage
+  (not ones that stopped for a person or failed). *Agent time* adds up
+  claimed → finished time of runs that ended in the window. *LLM spend* comes
+  from the usage ledger.
+- **Needs your approval**: open gates with who did the work, the stage and
+  how long it has waited, with Approve / Request changes / Stop in the row.
+- **Running now** (`GET /api/overview/running`): every run without an
+  outcome, claimed or queued. Each row shows the engineer, *Step n of m* in the
+  project's pipeline, and a live elapsed timer. The bar fills against
+  **Usually ~X**, the median duration of the last 20 successful runs of the same
+  stage (or phase) in the organization, shown only once there are at least 3.
+  A claimed run without a heartbeat for 3 minutes shows **No heartbeat for X**.
+
+Widgets added in a release are slotted into saved layouts once (next to
+the widget before them); hiding one afterwards sticks.
+
 ## Voice input (per user)
 
 Every prose field — task comments, "request changes" notes, answers to open

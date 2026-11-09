@@ -1,3 +1,6 @@
+from datetime import datetime, timedelta, timezone
+from statistics import median
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -5,9 +8,17 @@ from models.engineer import Engineer, EngineerStatus
 from models.project import Project
 from models.sdlc import OpenQuestion, QuestionStatus
 from models.task import Task, TaskStatus
-from models.task_run import TaskRun
+from models.task_run import TaskRun, TaskRunOutcome, TaskRunPhase
+from models.token_usage import TokenUsage
 from models.workflow import WorkflowStage
-from schemas.board import AttentionTaskOut, BoardColumn, BoardOut, BoardTaskOut, WorkspaceMetrics
+from schemas.board import (
+    AttentionTaskOut,
+    BoardColumn,
+    BoardOut,
+    BoardTaskOut,
+    RunningRunOut,
+    WorkspaceMetrics,
+)
 
 COLUMN_ORDER = [TaskStatus.pending, TaskStatus.in_progress, TaskStatus.qa, TaskStatus.done]
 
@@ -21,6 +32,31 @@ STATUS_LABELS = {
 # A run needs attention while it sits behind an unanswered human gate:
 # phase completions awaiting approval, needs_human_input, and blocked.
 ATTENTION_FILTER = TaskRun.approval_required.is_(True) & TaskRun.approved_at.is_(None)
+
+# Outcomes that mean "this stage finished its work" (as opposed to stopping for a person or failing)
+SUCCESS_OUTCOMES = (
+    TaskRunOutcome.grooming_complete, TaskRunOutcome.build_complete,
+    TaskRunOutcome.testing_complete, TaskRunOutcome.deployment_complete,
+)
+PHASE_ORDER = list(TaskRunPhase)
+# A claimed run with no heartbeat for this long is shown as quiet (matches runners.RUNNER_STALE)
+RUN_STALE = timedelta(seconds=180)
+# The "typical duration" hint needs at least this many finished runs of the same stage
+TYPICAL_MIN_SAMPLES = 3
+TYPICAL_SAMPLE_SIZE = 20
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    """SQLite hands back naive datetimes; everything here is stored in UTC."""
+    return dt.replace(tzinfo=timezone.utc) if dt is not None and dt.tzinfo is None else dt
+
+
+def _run_seconds(run: TaskRun) -> float | None:
+    start = _aware(run.claimed_at) or _aware(run.started_at)
+    end = _aware(run.completed_at)
+    if not start or not end or end < start:
+        return None
+    return (end - start).total_seconds()
 
 
 async def get_board(db: AsyncSession, organization_id: str, project_id: str | None = None) -> BoardOut:
@@ -116,9 +152,11 @@ def _stage_board(stages, all_tasks: list[Task], enrich) -> BoardOut:
 
 async def get_attention_tasks(db: AsyncSession, organization_id: str) -> list[AttentionTaskOut]:
     result = await db.execute(
-        select(TaskRun, Task, Project)
+        select(TaskRun, Task, Project, Engineer, WorkflowStage)
         .join(Task, TaskRun.task_id == Task.id)
         .join(Project, Task.project_id == Project.id)
+        .outerjoin(Engineer, Engineer.id == TaskRun.engineer_id)
+        .outerjoin(WorkflowStage, WorkflowStage.id == TaskRun.workflow_stage_id)
         .where(Project.organization_id == organization_id)
         .where(ATTENTION_FILTER)
         .where(TaskRun.completed_at.isnot(None))
@@ -126,7 +164,7 @@ async def get_attention_tasks(db: AsyncSession, organization_id: str) -> list[At
     )
     rows = result.all()
     items = []
-    for run, task, project in rows:
+    for run, task, project, engineer, stage in rows:
         items.append(AttentionTaskOut(
             task_id=task.id,
             task_title=task.title,
@@ -135,9 +173,125 @@ async def get_attention_tasks(db: AsyncSession, organization_id: str) -> list[At
             run_id=run.id,
             outcome=run.outcome.value if run.outcome else "pending",
             blocking_reason=run.blocking_reason,
-            blocked_since=run.completed_at.isoformat() if run.completed_at else "",
+            blocked_since=_aware(run.completed_at).isoformat() if run.completed_at else "",
+            engineer_id=engineer.id if engineer else None,
+            engineer_name=engineer.name if engineer else None,
+            stage_name=stage.name if stage else run.phase.value,
         ))
     return items
+
+
+async def get_running_runs(db: AsyncSession, organization_id: str) -> list[RunningRunOut]:
+    """Runs without an outcome yet, oldest first: what the engineers are doing right now."""
+    from services.orchestrator import ordered_stages
+
+    rows = (await db.execute(
+        select(TaskRun, Task, Project, Engineer, WorkflowStage)
+        .join(Task, TaskRun.task_id == Task.id)
+        .join(Project, Task.project_id == Project.id)
+        .outerjoin(Engineer, Engineer.id == TaskRun.engineer_id)
+        .outerjoin(WorkflowStage, WorkflowStage.id == TaskRun.workflow_stage_id)
+        .where(Project.organization_id == organization_id)
+        .where(TaskRun.outcome.is_(None))
+        .order_by(TaskRun.claimed_at.is_(None), TaskRun.started_at.asc())
+    )).all()
+
+    now = datetime.now(timezone.utc)
+    stage_lists: dict[str, list[WorkflowStage]] = {}
+    typical: dict[tuple[str, str], int | None] = {}
+    items: list[RunningRunOut] = []
+    for run, task, project, engineer, stage in rows:
+        index = count = None
+        if stage is not None:
+            if stage.workflow_id not in stage_lists:
+                stage_lists[stage.workflow_id] = await ordered_stages(db, stage.workflow_id)
+            ids = [s.id for s in stage_lists[stage.workflow_id]]
+            if stage.id in ids:
+                index, count = ids.index(stage.id) + 1, len(ids)
+            stage_name = stage.name
+        else:
+            index, count = PHASE_ORDER.index(run.phase) + 1, len(PHASE_ORDER)
+            stage_name = run.phase.value
+
+        key = ("stage", stage.id) if stage is not None else ("phase", run.phase.value)
+        if key not in typical:
+            typical[key] = await _typical_seconds(db, organization_id, run, stage)
+
+        claimed = _aware(run.claimed_at)
+        beat = _aware(run.last_heartbeat_at) or claimed
+        items.append(RunningRunOut(
+            run_id=run.id,
+            task_id=task.id,
+            task_title=task.title,
+            project_id=project.id,
+            project_name=project.name,
+            engineer_id=engineer.id if engineer else None,
+            engineer_name=engineer.name if engineer else None,
+            state="running" if claimed else "queued",
+            stage_name=stage_name,
+            stage_index=index,
+            stage_count=count,
+            attempt_number=run.attempt_number,
+            queued_at=_aware(run.started_at).isoformat(),
+            started_at=claimed.isoformat() if claimed else None,
+            last_heartbeat_at=beat.isoformat() if beat else None,
+            stale=bool(claimed and beat and now - beat > RUN_STALE),
+            typical_seconds=typical[key],
+        ))
+    return items
+
+
+async def _typical_seconds(db: AsyncSession, organization_id: str, run: TaskRun,
+                           stage: WorkflowStage | None) -> int | None:
+    """Median duration of the latest successful runs of the same stage (or phase) in this org."""
+    q = (
+        select(TaskRun)
+        .join(Task, TaskRun.task_id == Task.id)
+        .join(Project, Task.project_id == Project.id)
+        .where(Project.organization_id == organization_id)
+        .where(TaskRun.outcome.in_(SUCCESS_OUTCOMES), TaskRun.completed_at.isnot(None))
+        .order_by(TaskRun.completed_at.desc())
+        .limit(TYPICAL_SAMPLE_SIZE)
+    )
+    if stage is not None:
+        q = q.where(TaskRun.workflow_stage_id == stage.id)
+    else:
+        q = q.where(TaskRun.workflow_stage_id.is_(None), TaskRun.phase == run.phase)
+    durations = [d for d in (_run_seconds(r) for r in (await db.execute(q)).scalars()) if d is not None]
+    if len(durations) < TYPICAL_MIN_SAMPLES:
+        return None
+    return int(median(durations))
+
+
+async def _weekly(db: AsyncSession, organization_id: str, now: datetime) -> dict:
+    """Finished stages, agent time and spend for the last 7 days and the 7 before."""
+    week_ago, two_weeks_ago = now - timedelta(days=7), now - timedelta(days=14)
+    runs = (await db.execute(
+        select(TaskRun)
+        .join(Task, TaskRun.task_id == Task.id)
+        .join(Project, Task.project_id == Project.id)
+        .where(Project.organization_id == organization_id)
+        .where(TaskRun.completed_at >= two_weeks_ago)
+    )).scalars().all()
+    out = {"stages_completed_week": 0, "stages_completed_prev_week": 0,
+           "agent_seconds_week": 0, "agent_seconds_prev_week": 0}
+    for run in runs:
+        suffix = "week" if _aware(run.completed_at) >= week_ago else "prev_week"
+        if run.outcome in SUCCESS_OUTCOMES:
+            out[f"stages_completed_{suffix}"] += 1
+        out[f"agent_seconds_{suffix}"] += int(_run_seconds(run) or 0)
+
+    async def spend(start: datetime, end: datetime) -> float:
+        total = (await db.execute(
+            select(func.coalesce(func.sum(TokenUsage.cost_usd), 0.0))
+            .where(TokenUsage.organization_id == organization_id)
+            .where(TokenUsage.created_at >= start, TokenUsage.created_at < end)
+        )).scalar_one()
+        return round(float(total), 4)
+
+    out["cost_usd_week"] = await spend(week_ago, now + timedelta(seconds=1))
+    out["cost_usd_prev_week"] = await spend(two_weeks_ago, week_ago)
+    return out
 
 
 async def get_metrics(db: AsyncSession, organization_id: str) -> WorkspaceMetrics:
@@ -154,13 +308,20 @@ async def get_metrics(db: AsyncSession, organization_id: str) -> WorkspaceMetric
         .join(Project, Project.id == Task.project_id)
         .where(Project.organization_id == organization_id)
     )).scalar_one()
-    blocked_count = (await db.execute(
-        select(func.count()).select_from(TaskRun)
+    blocked_count, oldest_waiting = (await db.execute(
+        select(func.count(), func.min(TaskRun.completed_at)).select_from(TaskRun)
         .join(Task, Task.id == TaskRun.task_id)
         .join(Project, Project.id == Task.project_id)
         .where(Project.organization_id == organization_id)
         .where(ATTENTION_FILTER)
         .where(TaskRun.completed_at.isnot(None))
+    )).one()
+    runs_active = (await db.execute(
+        select(func.count()).select_from(TaskRun)
+        .join(Task, Task.id == TaskRun.task_id)
+        .join(Project, Project.id == Task.project_id)
+        .where(Project.organization_id == organization_id)
+        .where(TaskRun.outcome.is_(None))
     )).scalar_one()
     from services.token_usage import summary_for_org
     tokens = await summary_for_org(db, organization_id)
@@ -171,4 +332,7 @@ async def get_metrics(db: AsyncSession, organization_id: str) -> WorkspaceMetric
         blocked_tasks=blocked_count,
         total_tokens=tokens.tokens_in + tokens.tokens_out,
         total_cost_usd=tokens.cost_usd,
+        runs_active=runs_active,
+        oldest_waiting_since=_aware(oldest_waiting).isoformat() if oldest_waiting else None,
+        **await _weekly(db, organization_id, datetime.now(timezone.utc)),
     )

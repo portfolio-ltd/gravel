@@ -14,6 +14,7 @@ function useInvalidateGates() {
     qc.invalidateQueries({ queryKey: ["attention-tasks"] })
     qc.invalidateQueries({ queryKey: ["board"] })
     qc.invalidateQueries({ queryKey: ["metrics"] })
+    qc.invalidateQueries({ queryKey: ["running"] })
     qc.invalidateQueries({ queryKey: ["project"] })
     if (taskId) {
       qc.invalidateQueries({ queryKey: ["task-runs", taskId] })

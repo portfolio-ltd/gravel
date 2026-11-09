@@ -5,7 +5,7 @@ import services.board as board_svc
 from dependencies import get_current_org, get_current_user, get_db
 from models.organization import Organization
 from models.user import User
-from schemas.board import AttentionTaskOut, BoardOut, WorkspaceMetrics
+from schemas.board import AttentionTaskOut, BoardOut, RunningRunOut, WorkspaceMetrics
 
 router = APIRouter(tags=["board"])
 
@@ -33,3 +33,8 @@ async def attention_tasks(db: AsyncSession = Depends(get_db), current_user: User
 @router.get("/overview/metrics", response_model=WorkspaceMetrics)
 async def workspace_metrics(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), org: Organization = Depends(get_current_org)):
     return await board_svc.get_metrics(db, org.id)
+
+
+@router.get("/overview/running", response_model=list[RunningRunOut])
+async def running_runs(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), org: Organization = Depends(get_current_org)):
+    return await board_svc.get_running_runs(db, org.id)
