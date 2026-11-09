@@ -29,6 +29,7 @@ import { useProjectSocket } from "@/hooks/useProjectSocket"
 import { useRunAgent, useUploadFile, useParseAgent } from "@/hooks/useAgent"
 import { useImportIssues, useMeta } from "@/hooks/useSdlc"
 import { useAuth } from "@/contexts/AuthContext"
+import { rememberProject } from "@/lib/recentProjects"
 import { cn, formatRelativeTime } from "@/lib/utils"
 import type { Project, ProjectDetail as ProjectDetailData, TaskStatus } from "@/types"
 
@@ -561,6 +562,7 @@ function ProjectsView() {
 
   const selected = projects.find((p) => p.id === paramId) ?? projects[0] ?? null
   const activeId = selected?.id ?? null
+  useEffect(() => { if (activeId) rememberProject(activeId) }, [activeId])
 
   return (
     <div className="flex h-full flex-col md:flex-row">

@@ -1,16 +1,19 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { ChevronsUpDown, Key, Laptop, LogOut, Moon, Palette, Search, Shield, Sun, Zap } from "lucide-react"
+import { ChevronsUpDown, Folder, Key, Laptop, LogOut, Moon, Palette, Search, Shield, Sun, Zap } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useOrg } from "@/contexts/OrgContext"
 import { usePreferences } from "@/contexts/PreferencesContext"
+import { useProjects } from "@/hooks/useProjects"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown"
 import { NAV, isActive, type NavItem } from "@/lib/nav"
+import { RECENT_EVENT, orderRecent, readRecentIds } from "@/lib/recentProjects"
 import { cn, getInitials } from "@/lib/utils"
 
 export function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
@@ -82,6 +85,40 @@ export function NavLink({ item, collapsed, badge, onNavigate }: {
   )
 }
 
+/** The projects you opened last (this browser), topped up with the latest activity. */
+export function RecentProjects({ onNavigate }: { onNavigate?: () => void }) {
+  const { data: projects } = useProjects()
+  const [visited, setVisited] = useState<string[]>([])
+  useEffect(() => {
+    const sync = () => setVisited(readRecentIds())
+    sync()
+    window.addEventListener(RECENT_EVENT, sync)
+    window.addEventListener("storage", sync)
+    return () => {
+      window.removeEventListener(RECENT_EVENT, sync)
+      window.removeEventListener("storage", sync)
+    }
+  }, [])
+  const recent = orderRecent(projects ?? [], visited, 4)
+  if (!recent.length) return null
+  return (
+    <div className="space-y-0.5">
+      <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Recent</p>
+      {recent.map((p) => (
+        <Link
+          key={p.id}
+          href={`/projects?project=${p.id}`}
+          onClick={onNavigate}
+          className="flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-sm text-sidebar-foreground/75 transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Folder className="h-4 w-4 shrink-0" />
+          <span className="truncate">{p.name}</span>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
 export function NavGroups({ collapsed, attentionCount, onNavigate }: {
   collapsed?: boolean; attentionCount: number; onNavigate?: () => void
 }) {
@@ -107,6 +144,7 @@ export function NavGroups({ collapsed, attentionCount, onNavigate }: {
                 badge={item.badge === "attention" ? attentionCount : undefined}
               />
             ))}
+            {group.label === "Workspace" && !collapsed && <div className="pt-4"><RecentProjects onNavigate={onNavigate} /></div>}
           </div>
         )
       })}

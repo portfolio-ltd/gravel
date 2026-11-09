@@ -39,6 +39,20 @@ figure comes from recorded runs; nothing is estimated from outside data.
   stage (or phase) in the organization, shown only once there are at least 3.
   A claimed run without a heartbeat for 3 minutes shows **No heartbeat for X**.
 
+- **Ask your engineers** (next to the greeting): type or dictate a request
+  and pick a project. The first line becomes the task title, and the full text
+  is kept in the description when the title is shortened or there are more
+  lines. **Add task** puts it in the backlog. **Add & start** also queues that
+  one task on its first stage
+  (`POST /api/projects/{id}/tasks/{task_id}/start`). Unlike the project's Run
+  button, it leaves other pending tasks alone. It is refused (409) while the
+  task's dependencies are unfinished. With no engineer runtime online, the
+  in-process executor runs it. ⌘↵ adds, ⇧⌘↵ adds and starts.
+
+The sidebar's **Recent** list shows the projects you opened last in this
+browser (kept in local storage), topped up with the projects with the latest
+activity.
+
 Widgets added in a release are slotted into saved layouts once (next to
 the widget before them); hiding one afterwards sticks.
 

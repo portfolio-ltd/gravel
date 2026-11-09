@@ -8,6 +8,11 @@ All notable changes to Gravel are recorded here. The format follows
 
 ### Added
 
+- Home: an "Ask your engineers" box. Type or dictate a request, pick a
+  project, then **Add task** or **Add & start**. A sidebar **Recent** section
+  lists the projects you opened last. New
+  `POST /api/projects/{id}/tasks/{task_id}/start` queues a single pending task
+  on its first stage, without starting the rest of the project
 - Home dashboard redesign: a **Running now** list with each engineer's run,
   *Step n of m*, a live elapsed timer, a bar measured against the stage's usual
   duration (median of recent finished runs; hidden without history) and a
