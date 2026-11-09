@@ -31,6 +31,7 @@ class ProjectUpdate(BaseModel):
     workflow_id: str | None = None
     issues_repo: str | None = None
     post_issue_comments: bool | None = None
+    runner_account: str | None = None  # "" or null clears the pin
 
 
 class DesignFileOut(BaseModel):
@@ -54,6 +55,7 @@ class ProjectOut(BaseModel):
     workflow_id: str | None = None
     issues_repo: str | None = None
     post_issue_comments: bool = False
+    runner_account: str | None = None
     created_at: datetime
     updated_at: datetime
     design_files: list[DesignFileOut] = []

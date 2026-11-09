@@ -372,3 +372,16 @@ def test_cli_tasks_show_what_they_wait_on(monkeypatch, tmp_path: Path, capsys):
     cli.cmd_tasks(cli.build_parser().parse_args(["tasks", "p1"]), transport=transport)
     out = capsys.readouterr().out
     assert "API  (waiting on 1)" in out and "Schema\n" in out
+
+
+def test_runner_label_includes_the_account():
+    from gravel_runtime.cli import runner_label
+    assert runner_label(None, None, "mbp") == "mbp"
+    assert runner_label(None, " work ", "mbp") == "mbp (work)"
+    assert runner_label("studio", "work", "mbp") == "studio"
+
+
+def test_work_accepts_an_account_flag():
+    from gravel_runtime.cli import build_parser
+    args = build_parser().parse_args(["work", "--executor", "codex", "--account", "personal"])
+    assert args.account == "personal"

@@ -39,6 +39,8 @@ class Project(BaseModel):
     # results are posted back to the issue as comments
     issues_repo: Mapped[str | None] = mapped_column(String(300), nullable=True)
     post_issue_comments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Only local runners signed in to this account take this project's runs (None: any engineer)
+    runner_account: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     owner = relationship("User", back_populates="projects")
     design_files = relationship("ProjectDesignFile", back_populates="project", cascade="all, delete-orphan")

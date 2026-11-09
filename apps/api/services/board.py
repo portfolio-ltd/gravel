@@ -12,6 +12,8 @@ from models.task_run import TaskRun, TaskRunOutcome, TaskRunPhase
 from models.token_usage import TokenUsage
 from models.workflow import WorkflowStage
 from schemas.board import (
+    AccountRunnerOut,
+    AccountUsageOut,
     AttentionTaskOut,
     BoardColumn,
     BoardOut,
@@ -237,6 +239,8 @@ async def get_running_runs(db: AsyncSession, organization_id: str) -> list[Runni
             last_heartbeat_at=beat.isoformat() if beat else None,
             stale=bool(claimed and beat and now - beat > RUN_STALE),
             typical_seconds=typical[key],
+            # Claimed: the account that took it (none for Docker/in-process); queued: the pin it waits for
+            runner_account=run.runner_account if claimed else project.runner_account,
         ))
     return items
 
@@ -336,3 +340,67 @@ async def get_metrics(db: AsyncSession, organization_id: str) -> WorkspaceMetric
         oldest_waiting_since=_aware(oldest_waiting).isoformat() if oldest_waiting else None,
         **await _weekly(db, organization_id, datetime.now(timezone.utc)),
     )
+
+
+async def get_accounts(db: AsyncSession, organization_id: str) -> list[AccountUsageOut]:
+    """Per person and AI account: their local runners, pinned projects and last-7-days usage."""
+    from models.engineer import EngineerRuntime
+    from models.user import User
+    from services.runners import is_online
+
+    now = datetime.now(timezone.utc)
+    groups: dict[tuple[str, str | None], AccountUsageOut] = {}
+    names: dict[str, str] = {}
+
+    async def group(owner_id: str, account: str | None) -> AccountUsageOut:
+        if owner_id not in names:
+            user = await db.get(User, owner_id)
+            names[owner_id] = user.name if user else "Someone"
+        key = (owner_id, account)
+        if key not in groups:
+            groups[key] = AccountUsageOut(account=account, owner_id=owner_id, owner_name=names[owner_id],
+                                          runners=[], pinned_projects=[])
+        return groups[key]
+
+    runtimes = (await db.execute(
+        select(EngineerRuntime).join(Engineer, Engineer.id == EngineerRuntime.engineer_id)
+        .where(Engineer.organization_id == organization_id, EngineerRuntime.kind == "local",
+               EngineerRuntime.owner_user_id.isnot(None), EngineerRuntime.is_active.is_(True))
+        .order_by(EngineerRuntime.started_at.desc())
+    )).scalars().all()
+    for rt in runtimes:
+        g = await group(rt.owner_user_id, rt.account_label)
+        g.runners.append(AccountRunnerOut(host_label=rt.host_label, executor=rt.executor,
+                                          online=is_online(rt, now), scope=rt.scope))
+
+    pinned = (await db.execute(
+        select(Project).where(Project.organization_id == organization_id, Project.runner_account.isnot(None))
+    )).scalars().all()
+    for project in pinned:
+        (await group(project.owner_id, project.runner_account)).pinned_projects.append(project.name)
+
+    rows = (await db.execute(
+        select(TaskRun, Engineer.owner_id)
+        .join(Task, TaskRun.task_id == Task.id)
+        .join(Project, Task.project_id == Project.id)
+        .join(Engineer, Engineer.id == TaskRun.engineer_id)
+        .join(EngineerRuntime, EngineerRuntime.engineer_id == Engineer.id)
+        .where(Project.organization_id == organization_id, EngineerRuntime.kind == "local")
+        .where(TaskRun.completed_at >= now - timedelta(days=7))
+        .distinct()
+    )).all()
+    run_group: dict[str, AccountUsageOut] = {}
+    for run, owner_id in rows:
+        g = await group(owner_id, run.runner_account)
+        g.runs_week += 1
+        g.agent_seconds_week += int(_run_seconds(run) or 0)
+        run_group[run.id] = g
+    if run_group:
+        usage = (await db.execute(
+            select(TokenUsage.task_run_id, func.sum(TokenUsage.tokens_in + TokenUsage.tokens_out))
+            .where(TokenUsage.task_run_id.in_(run_group)).group_by(TokenUsage.task_run_id)
+        )).all()
+        for run_id, tokens in usage:
+            run_group[run_id].tokens_week += int(tokens or 0)
+
+    return sorted(groups.values(), key=lambda g: (g.owner_name, g.account is None, g.account or ""))

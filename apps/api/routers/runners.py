@@ -16,11 +16,11 @@ async def register(body: RunnerRegister, current_user: CurrentUser, org: Current
     """`gravel work` calls this with the user's API token to become a local runner."""
     runtime, engineer, token = await runners.register(
         db, current_user, org.id, host_label=body.host_label, executor=body.executor, scope=body.scope,
-        engineer_id=body.engineer_id, engineer_name=body.engineer_name,
+        engineer_id=body.engineer_id, engineer_name=body.engineer_name, account=body.account,
     )
     return RunnerRegistered(
         runtime_id=runtime.id, engineer_id=engineer.id, engineer_name=engineer.name, runtime_token=token,
-        scope=runtime.scope, poll_interval_seconds=settings.RUNTIME_POLL_INTERVAL_SECONDS,
+        scope=runtime.scope, account=runtime.account_label, poll_interval_seconds=settings.RUNTIME_POLL_INTERVAL_SECONDS,
         heartbeat_interval_seconds=settings.RUNTIME_HEARTBEAT_INTERVAL_SECONDS,
     )
 

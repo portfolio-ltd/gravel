@@ -91,6 +91,10 @@ async def drain_project(project_id: str, user_id: str) -> None:
                     break
                 run, task, project = row
 
+                # Pinned to an AI account: only that account's runner may do it
+                if project.runner_account:
+                    break
+
                 # If real runtimes came online, leave the queue to them.
                 if await orchestrator.has_active_runtimes(db, project.organization_id, project.owner_id):
                     break

@@ -7,6 +7,7 @@ class RunnerRegister(BaseModel):
     scope: str = "mine"               # mine = projects I own; org = the whole organization
     engineer_id: str | None = None    # reuse an existing engineer; default: "<name>'s <host>"
     engineer_name: str | None = None
+    account: str | None = Field(default=None, max_length=100)  # the AI account the CLI is signed in to
 
 
 class RunnerRegistered(BaseModel):
@@ -15,6 +16,7 @@ class RunnerRegistered(BaseModel):
     engineer_name: str
     runtime_token: str  # returned exactly once
     scope: str
+    account: str | None = None
     poll_interval_seconds: int
     heartbeat_interval_seconds: int
 

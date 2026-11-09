@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
-import type { BoardData, AttentionTask, RunningRun, WorkspaceMetrics } from "@/types"
+import type { AccountUsage, BoardData, AttentionTask, RunningRun, WorkspaceMetrics } from "@/types"
 
 export function useBoard(projectId?: string) {
   return useQuery<BoardData>({
@@ -34,5 +34,14 @@ export function useRunningRuns() {
     queryKey: ["running"],
     queryFn: () => apiFetch("/api/overview/running"),
     refetchInterval: 10_000,
+  })
+}
+
+/** Local runners grouped by AI account, with last-7-days usage. */
+export function useRunnerAccounts() {
+  return useQuery<AccountUsage[]>({
+    queryKey: ["runner-accounts"],
+    queryFn: () => apiFetch("/api/overview/accounts"),
+    refetchInterval: 30_000,
   })
 }

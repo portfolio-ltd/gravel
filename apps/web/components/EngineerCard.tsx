@@ -95,6 +95,7 @@ export default function EngineerCard({ engineer, onEdit }: Props) {
         {localRunner && (
           <p className="mb-3 text-[11px] text-muted-foreground">
             Runs on <b className="font-medium text-foreground">{localRunner.host_label ?? "a local machine"}</b> with {localRunner.executor ?? "an AI CLI"}
+            {localRunner.account_label && <>{" · account "}<b className="font-mono font-medium text-foreground">{localRunner.account_label}</b></>}
             {" · "}{localRunner.scope === "mine" ? "its owner's projects" : "the whole organization"}
             {" · "}<span className={localRunner.online ? "text-success" : ""}>{localRunner.online ? "online" : "offline — start it with gravel work"}</span>
           </p>

@@ -29,7 +29,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -300,6 +300,11 @@ async def claim_next_run(
     )
     if runtime.kind == "local" and runtime.scope == "mine":
         q = q.where(Project.owner_id == runtime.owner_user_id)  # a personal runner serves its owner only
+    # A project pinned to an AI account is only taken by runners signed in to it
+    if runtime.kind == "local" and runtime.account_label:
+        q = q.where(or_(Project.runner_account.is_(None), Project.runner_account == runtime.account_label))
+    else:
+        q = q.where(Project.runner_account.is_(None))
     if db.bind and db.bind.dialect.name == "postgresql":
         q = q.with_for_update(of=TaskRun, skip_locked=True)
     row = (await db.execute(q)).first()
@@ -311,6 +316,7 @@ async def claim_next_run(
     run.engineer_id = engineer.id
     run.claimed_at = now
     run.last_heartbeat_at = now
+    run.runner_account = runtime.account_label if runtime.kind == "local" else None
     runtime.current_task_run_id = run.id
     if run.workflow_stage_id:
         stage = await db.get(WorkflowStage, run.workflow_stage_id)

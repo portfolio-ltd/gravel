@@ -36,6 +36,7 @@ class RuntimeOut(BaseModel):
     host_label: str | None = None
     executor: str | None = None
     scope: str = "org"              # local runners: mine | org
+    account_label: str | None = None  # local runners: the AI account label
     online: bool = False            # local runners: active and heartbeating
 
     model_config = {"from_attributes": True}

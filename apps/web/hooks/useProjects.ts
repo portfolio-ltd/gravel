@@ -45,6 +45,7 @@ export function useUpdateProject(id: string) {
       repo_url?: string | null
       default_branch?: string
       workflow_id?: string | null
+      runner_account?: string | null
       issues_repo?: string | null
       post_issue_comments?: boolean
     }) =>

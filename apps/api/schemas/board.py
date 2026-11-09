@@ -74,3 +74,23 @@ class RunningRunOut(BaseModel):
     last_heartbeat_at: str | None = None
     stale: bool = False             # claimed, but no sign of life for a while
     typical_seconds: int | None = None  # median duration of recent finished runs of this stage
+    runner_account: str | None = None   # account that is running it, or the one the project waits for
+
+
+class AccountRunnerOut(BaseModel):
+    host_label: str | None
+    executor: str | None
+    online: bool
+    scope: str
+
+
+class AccountUsageOut(BaseModel):
+    """Local runners grouped by the AI account they are signed in to (per person)."""
+    account: str | None             # None: runners started without --account
+    owner_id: str
+    owner_name: str
+    runners: list[AccountRunnerOut]
+    pinned_projects: list[str]      # names of projects pinned to this account (owner's projects)
+    runs_week: int = 0              # runs this account finished in the last 7 days
+    agent_seconds_week: int = 0
+    tokens_week: int = 0

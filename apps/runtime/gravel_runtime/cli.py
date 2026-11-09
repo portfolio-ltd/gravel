@@ -175,6 +175,18 @@ def cmd_reject(args, transport=None) -> int:
     return 0
 
 
+# Where each AI CLI keeps its login, so one machine can run a runner per account
+ACCOUNT_DIRS = {"claude-code": "CLAUDE_CONFIG_DIR", "opencode": None, "codex": "CODEX_HOME"}
+
+
+def runner_label(name: str | None, account: str | None, hostname: str) -> str:
+    """The runner's name in Gravel. With --account and no --name it includes the account, so two
+    runners on one machine (one per account) don't retire each other on start."""
+    if name:
+        return name
+    return f"{hostname} ({account.strip()})" if account and account.strip() else hostname
+
+
 def cmd_work(args, transport=None) -> int:
     from . import jobs, main
     from .client import GravelClient
@@ -186,9 +198,10 @@ def cmd_work(args, transport=None) -> int:
         raise SystemExit(f"'{binary}' isn't on your PATH. Install it and sign in first "
                          f"({'claude' if args.executor == 'claude-code' else args.executor} login).")
     api = _api(args, transport)
+    account = args.account or os.environ.get("GRAVEL_ACCOUNT") or None
     reg = api.call("POST", "/api/runners/register", {
-        "host_label": args.name or socket.gethostname(), "executor": args.executor,
-        "scope": "org" if args.team else "mine",
+        "host_label": runner_label(args.name, account, socket.gethostname()), "executor": args.executor,
+        "scope": "org" if args.team else "mine", "account": account,
     })
     config.api_base_url = api.server
     config.runtime_id, config.engineer_id, config.runtime_token = reg["runtime_id"], reg["engineer_id"], reg["runtime_token"]
@@ -202,6 +215,10 @@ def cmd_work(args, transport=None) -> int:
     client = GravelClient()
     who = "projects you own" if reg["scope"] == "mine" else "your whole organization"
     print(f"Runner '{reg['engineer_name']}' is online, using {args.executor} ({who}). Ctrl+C to stop.")
+    if reg.get("account"):
+        env = ACCOUNT_DIRS.get(args.executor)
+        where = f" with {env}={os.environ[env]}" if env and os.environ.get(env) else ""
+        print(f"Account '{reg['account']}'{where}: projects pinned to it run only here.")
 
     stop = threading.Event()
 
@@ -285,6 +302,8 @@ def build_parser() -> argparse.ArgumentParser:
     work.add_argument("--team", action="store_true", help="take runs from the whole organization, not just your projects")
     work.add_argument("--ssh", action="store_true", help="clone GitHub repos over SSH with your own keys")
     work.add_argument("--workdir", help="where task checkouts go (default ~/.cache/gravel/work)")
+    work.add_argument("--account", help="label for the AI account this CLI is signed in to (e.g. work); "
+                      "projects pinned to it run only on runners with this label. Env: GRAVEL_ACCOUNT")
     work.add_argument("--once", action="store_true", help="take at most one run, then exit")
     return parser
 
