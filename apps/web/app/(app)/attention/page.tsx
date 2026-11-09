@@ -4,8 +4,7 @@ import { useMemo, useState } from "react"
 import { Bell, CheckCircle2, Clock, FolderKanban, Hand, Loader2, PanelRightOpen } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { useAttentionTasks } from "@/hooks/useBoard"
-import { useProject } from "@/hooks/useProjects"
-import TaskDetailPanel from "@/components/TaskDetailPanel"
+import TaskOpener from "@/components/TaskOpener"
 import GateActions from "@/components/sdlc/GateActions"
 import { Button } from "@/components/ui/button"
 import { EmptyState, Page, PageHeader } from "@/components/ui/page"
@@ -50,20 +49,6 @@ function AttentionCard({ item, onOpen }: { item: AttentionTask; onOpen: () => vo
       </div>
     </li>
   )
-}
-
-/** Attention items only carry ids — load the project to hand the panel a full task. */
-function TaskOpener({ projectId, taskId, onClose }: { projectId: string; taskId: string; onClose: () => void }) {
-  const { data: project, isLoading } = useProject(projectId)
-  const task = project?.tasks.find((t) => t.id === taskId)
-  if (isLoading || !task) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20" onClick={onClose} role="presentation">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-  return <TaskDetailPanel task={task} onClose={onClose} />
 }
 
 export default function AttentionPage() {

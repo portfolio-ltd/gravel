@@ -8,6 +8,16 @@ All notable changes to Gravel are recorded here. The format follows
 
 ### Added
 
+- Home dashboard redesign: a **Running now** list with each engineer's run,
+  *Step n of m*, a live elapsed timer, a bar measured against the stage's usual
+  duration (median of recent finished runs; hidden without history) and a
+  warning when a run stops heartbeating; **Needs your approval** with
+  Approve / Request changes / Stop inline and who did the work; four
+  "this week" cards (waiting for you, stages finished, agent time, LLM spend)
+  compared with the week before; a date, greeting and status line. Engineers
+  get a stable colour and initials. New `GET /api/overview/running`;
+  `/api/overview/metrics` adds weekly figures and the oldest open gate;
+  attention items carry the engineer and stage
 - Local runners and the `gravel` CLI: `gravel login` (device login approved at
   `/cli`, or an API token), `projects`, `tasks`, `gates`, `approve`, `reject`,
   and `gravel work`, which runs tasks on your machine with the Claude Code or

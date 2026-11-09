@@ -6,25 +6,32 @@ import {
   ArrowDown, ArrowRight, ArrowUp, BookOpen, Check, Eye, EyeOff, FolderKanban, GitBranch, Inbox, Key,
   Kanban, LayoutGrid, Plus, Settings2, Sparkles,
 } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
+import { format, formatDistanceToNow } from "date-fns"
 import { useAuth } from "@/contexts/AuthContext"
 import { usePreferences } from "@/contexts/PreferencesContext"
-import { useAttentionTasks, useBoard } from "@/hooks/useBoard"
+import { useAttentionTasks, useBoard, useRunningRuns } from "@/hooks/useBoard"
 import { useProjects } from "@/hooks/useProjects"
 import { useApiKeys } from "@/hooks/useUsers"
 import { useKnowledge } from "@/hooks/useSdlc"
 import { useWorkflows } from "@/hooks/useWorkflows"
 import WorkspaceMetrics from "@/components/WorkspaceMetrics"
+import EngineerAvatar from "@/components/EngineerAvatar"
+import TaskOpener from "@/components/TaskOpener"
+import RunningNow from "@/components/home/RunningNow"
+import GateActions from "@/components/sdlc/GateActions"
 import { Button } from "@/components/ui/button"
 import { Page } from "@/components/ui/page"
+import { greeting, stageLabel, statusLine } from "@/lib/agentTime"
 import { HOME_WIDGETS } from "@/lib/theme"
 import { cn } from "@/lib/utils"
 
 type WidgetId = (typeof HOME_WIDGETS)[number]["id"]
+type OpenTask = (projectId: string, taskId: string) => void
 
-function greeting(): string {
-  const h = new Date().getHours()
-  return h < 5 ? "Working late" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"
+const OUTCOME_LABEL: Record<string, string> = {
+  needs_human_input: "Needs your input",
+  blocked: "Blocked",
+  failed: "Failed",
 }
 
 function Widget({ title, icon, href, children, className }: {
@@ -46,36 +53,56 @@ function Widget({ title, icon, href, children, className }: {
   )
 }
 
-function AttentionWidget() {
+function AttentionWidget({ onOpenTask }: { onOpenTask: OpenTask }) {
   const { data } = useAttentionTasks()
   const items = data ?? []
   return (
-    <Widget title="Needs your attention" icon={<Inbox className="h-4 w-4" />} href="/attention">
+    <section className="surface flex flex-col">
+      <header className="flex items-center gap-2 px-4 py-3">
+        <Inbox className="h-4 w-4 text-muted-foreground" />
+        <h2 className="text-sm font-semibold">Needs your approval</h2>
+        {items.length > 0 && (
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium tabular-nums">{items.length}</span>
+        )}
+        <Link href="/attention" className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          See all <ArrowRight className="h-3 w-3" />
+        </Link>
+      </header>
       {items.length === 0 ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 border-t px-4 py-4 text-sm text-muted-foreground">
           <Check className="h-4 w-4 text-success" /> Nothing is waiting on you.
         </div>
       ) : (
-        <ul className="space-y-2">
-          {items.slice(0, 5).map((a) => (
-            <li key={a.run_id}>
-              <Link href="/attention" className="group block rounded-lg border px-3 py-2 transition-colors hover:bg-accent">
-                <div className="flex items-center gap-2">
-                  <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", a.outcome === "needs_human_input" || a.outcome === "blocked" ? "bg-warning" : "bg-primary")} />
-                  <p className="truncate text-sm font-medium">{a.task_title}</p>
-                  <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
-                    {formatDistanceToNow(new Date(a.blocked_since), { addSuffix: true })}
-                  </span>
-                </div>
-                <p className="mt-0.5 truncate pl-3.5 text-xs text-muted-foreground">
-                  {a.project_name} · {a.blocking_reason ?? a.outcome.replace(/_/g, " ")}
-                </p>
-              </Link>
-            </li>
-          ))}
+        <ul className="divide-y border-t">
+          {items.slice(0, 5).map((a) => {
+            const label = OUTCOME_LABEL[a.outcome]
+            return (
+              <li key={a.run_id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
+                <button onClick={() => onOpenTask(a.project_id, a.task_id)} className="group min-w-0 flex-1 text-left">
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    <span className="truncate group-hover:underline">{a.task_title}</span>
+                    {label && (
+                      <span className="shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning">{label}</span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                    <EngineerAvatar id={a.engineer_id} name={a.engineer_name} size="xs" />
+                    <span className="truncate">
+                      {[a.engineer_name, a.stage_name && stageLabel(a.stage_name), a.project_name].filter(Boolean).join(" · ")}
+                      {a.blocked_since && ` · ${formatDistanceToNow(new Date(a.blocked_since), { addSuffix: true })}`}
+                    </span>
+                  </p>
+                  {a.blocking_reason && (
+                    <p className="mt-1 line-clamp-2 text-xs text-foreground/80">{a.blocking_reason}</p>
+                  )}
+                </button>
+                <GateActions runId={a.run_id} taskId={a.task_id} compact className="shrink-0" />
+              </li>
+            )
+          })}
         </ul>
       )}
-    </Widget>
+    </section>
   )
 }
 
@@ -195,9 +222,10 @@ function GettingStarted() {
   )
 }
 
-const RENDER: Record<WidgetId, { node: () => React.ReactNode; wide?: boolean }> = {
+const RENDER: Record<WidgetId, { node: (open: OpenTask) => React.ReactNode; wide?: boolean }> = {
   metrics: { node: () => <WorkspaceMetrics />, wide: true },
-  attention: { node: () => <AttentionWidget /> },
+  attention: { node: (open) => <AttentionWidget onOpenTask={open} />, wide: true },
+  running: { node: (open) => <RunningNow onOpenTask={open} />, wide: true },
   projects: { node: () => <ProjectsWidget /> },
   pipeline: { node: () => <PipelineWidget /> },
   knowledge: { node: () => <KnowledgeWidget /> },
@@ -207,10 +235,16 @@ export default function HomePage() {
   const { user } = useAuth()
   const { prefs, update } = usePreferences()
   const [customizing, setCustomizing] = useState(false)
+  const [openTask, setOpenTask] = useState<{ projectId: string; taskId: string } | null>(null)
+  const { data: attention } = useAttentionTasks()
+  const { data: running } = useRunningRuns()
+  const inFlight = running?.filter((r) => r.state === "running").length ?? 0
+  const queued = (running?.length ?? 0) - inFlight
+  const now = new Date()
   const visible = prefs.home.widgets.filter((id): id is WidgetId => id in RENDER)
 
   function setWidgets(widgets: string[]) {
-    update({ home: { widgets } })
+    update({ home: { widgets, known: HOME_WIDGETS.map((w) => w.id) } })
   }
   function move(id: WidgetId, delta: number) {
     const list = [...visible]
@@ -225,8 +259,13 @@ export default function HomePage() {
     <Page wide>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">{greeting()},</p>
-          <h1 className="text-2xl font-semibold tracking-tight">{user?.name?.split(" ")[0] ?? "there"}</h1>
+          <p className="text-sm text-muted-foreground">{format(now, "EEEE, MMMM d")}</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+            {greeting(now.getHours())}, {user?.name?.split(" ")[0] ?? "there"}
+          </h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            {attention && running ? statusLine(attention.length, inFlight, queued) : "\u00a0"}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => setCustomizing((v) => !v)}>
@@ -278,9 +317,13 @@ export default function HomePage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         {visible.map((id) => (
-          <div key={id} className={cn(RENDER[id].wide && "lg:col-span-2")}>{RENDER[id].node()}</div>
+          <div key={id} className={cn("min-w-0", RENDER[id].wide && "lg:col-span-2")}>
+            {RENDER[id].node((projectId, taskId) => setOpenTask({ projectId, taskId }))}
+          </div>
         ))}
       </div>
+
+      {openTask && <TaskOpener projectId={openTask.projectId} taskId={openTask.taskId} onClose={() => setOpenTask(null)} />}
     </Page>
   )
 }

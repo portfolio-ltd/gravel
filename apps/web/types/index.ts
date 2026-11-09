@@ -278,6 +278,32 @@ export interface AttentionTask {
   outcome: string
   blocking_reason: string | null
   blocked_since: string
+  engineer_id: string | null
+  engineer_name: string | null
+  stage_name: string | null
+}
+
+/** A run without an outcome yet (GET /api/overview/running). */
+export interface RunningRun {
+  run_id: string
+  task_id: string
+  task_title: string
+  project_id: string
+  project_name: string
+  engineer_id: string | null
+  engineer_name: string | null
+  state: "running" | "queued"
+  stage_name: string
+  stage_index: number | null
+  stage_count: number | null
+  attempt_number: number
+  queued_at: string
+  started_at: string | null
+  last_heartbeat_at: string | null
+  /** Claimed, but no heartbeat for a few minutes */
+  stale: boolean
+  /** Median duration of recent finished runs of this stage; null without enough history */
+  typical_seconds: number | null
 }
 
 export interface WorkspaceMetrics {
@@ -287,6 +313,15 @@ export interface WorkspaceMetrics {
   blocked_tasks: number
   total_tokens: number
   total_cost_usd: number
+  /** Rolling windows: "week" is the last 7 days, "prev_week" the 7 before. */
+  runs_active: number
+  stages_completed_week: number
+  stages_completed_prev_week: number
+  agent_seconds_week: number
+  agent_seconds_prev_week: number
+  cost_usd_week: number
+  cost_usd_prev_week: number
+  oldest_waiting_since: string | null
 }
 
 export interface TokenSummary {
