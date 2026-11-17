@@ -1,313 +1,92 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useEffect, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, ArrowUp, ArrowDown, Bot, ChevronDown, ChevronRight, GitBranch, Loader2, Plus, Trash2, UserCheck } from "lucide-react"
-import {
-  useWorkflow, useUpdateWorkflow, useAddStage, useUpdateStage, useDeleteStage, useReorderStages,
-} from "@/hooks/useWorkflows"
-import { useEngineers } from "@/hooks/useEngineers"
-import { useHarnesses } from "@/hooks/useHarnesses"
-import { useMeta } from "@/hooks/useSdlc"
-import { Button } from "@/components/ui/button"
-import { Field, Input, Select, Switch, Textarea } from "@/components/ui/form"
-import { Page, SectionCard } from "@/components/ui/page"
-import { Pipeline, PipelineLegend, ROLE_STYLE, stagesFromWorkflow } from "@/components/workflow/Pipeline"
-import GraphView, { type GraphEdge, type GraphNode } from "@/components/graph/GraphView"
+import { AlertTriangle, ChevronRight, Copy, FolderKanban, HelpCircle, Loader2, Plus, Repeat } from "lucide-react"
 import { toast } from "sonner"
+import { useAddStage, useUpdateWorkflow, useWorkflow } from "@/hooks/useWorkflows"
+import { useEngineers } from "@/hooks/useEngineers"
+import { useMeta } from "@/hooks/useSdlc"
+import { useProjects } from "@/hooks/useProjects"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Field, Input, Select } from "@/components/ui/form"
+import { HelpHint, Tooltip } from "@/components/ui/tooltip"
+import { PipelineLegend } from "@/components/workflow/Pipeline"
+import WorkflowCanvas from "@/components/workflow/WorkflowCanvas"
+import StageInspector from "@/components/workflow/StageInspector"
+import LoopEditor from "@/components/workflow/LoopEditor"
+import { unreachableStages } from "@/lib/workflowCanvas"
 import { cn } from "@/lib/utils"
-import type { ModelOption, StageRole, StageRoleKey, WorkflowStage, WorkflowStageCreate } from "@/types"
+import type { StageRoleKey, WorkflowLoop } from "@/types"
 
-const PROVIDER_LABELS: Record<ModelOption["provider"], string> = { anthropic: "Anthropic", openai: "OpenAI", groq: "Groq" }
+function AddStageDialog({ open, onOpenChange, workflowId }: { open: boolean; onOpenChange: (v: boolean) => void; workflowId: string }) {
+  const { data: meta } = useMeta()
+  const addStage = useAddStage()
+  const [name, setName] = useState("")
+  const [role, setRole] = useState<StageRoleKey>("build")
+  const roles = meta?.stage_roles ?? []
+  const description = roles.find((r) => r.key === role)?.description
 
-function ToggleRow({ label, hint, checked, onChange, disabled }: {
-  label: string; hint: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean
-}) {
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    try {
+      await addStage.mutateAsync({ workflowId, name: name.trim(), role })
+      toast.success(`Added “${name.trim()}”`)
+      setName("")
+      onOpenChange(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add stage")
+    }
+  }
+
   return (
-    <div className={cn("flex items-start justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2.5", disabled && "opacity-60")}>
-      <div className="min-w-0">
-        <p className="text-xs font-medium">{label}</p>
-        <p className="text-[11px] text-muted-foreground">{hint}</p>
-      </div>
-      <Switch checked={checked} onChange={onChange} disabled={disabled} label={label} className="mt-0.5" />
-    </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add a stage</DialogTitle>
+          <DialogDescription>It goes at the end; move it from the stage panel.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-3">
+          <Field label="Name">
+            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Security review" />
+          </Field>
+          <Field label="Role" help="role" hint={description}>
+            <Select value={role} onChange={(e) => setRole(e.target.value as StageRoleKey)}>
+              {roles.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+              {roles.length === 0 && <option value="custom">Custom</option>}
+            </Select>
+          </Field>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" size="sm" disabled={!name.trim() || addStage.isPending}>
+              {addStage.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add stage
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
-/** The workflow as a graph: success edges solid, rework edges dashed. */
-function stageGraph(stages: WorkflowStage[], roles: StageRole[]): { nodes: GraphNode[]; edges: GraphEdge[] } {
-  const nodes = stages.map((s) => ({
-    id: s.id,
-    label: s.name,
-    sublabel: [roles.find((r) => r.key === s.role)?.label ?? s.role, !s.is_ai_executable && "manual",
-      s.requires_human_approval && "gate"].filter(Boolean).join(" · "),
-    tone: s.is_ai_executable ? ("default" as const) : ("warning" as const),
-  }))
-  const edges: GraphEdge[] = []
-  stages.forEach((s, i) => {
-    const next = s.next_stage_id ?? stages[i + 1]?.id
-    if (next) edges.push({ source: s.id, target: next })
-    if (s.rework_target_stage_id) edges.push({ source: s.id, target: s.rework_target_stage_id, dashed: true })
-  })
-  return { nodes, edges }
-}
-
-/** Stages no edge leads to from the first stage — tasks can never reach them. */
-function unreachableStages(stages: WorkflowStage[], edges: GraphEdge[]): WorkflowStage[] {
-  if (!stages.length) return []
-  const seen = new Set([stages[0].id])
-  const queue = [stages[0].id]
-  while (queue.length) {
-    const id = queue.shift()!
-    for (const e of edges) if (e.source === id && !seen.has(e.target)) { seen.add(e.target); queue.push(e.target) }
-  }
-  return stages.filter((s) => !seen.has(s.id))
-}
-
-function StageCard({
-  stage, index, total, workflowId, siblings, roles, models,
-}: {
-  stage: WorkflowStage
-  index: number
-  total: number
-  workflowId: string
-  siblings: WorkflowStage[]
-  roles: StageRole[]
-  models: ModelOption[]
-}) {
-  const { data: engineers } = useEngineers()
-  const { data: harnesses } = useHarnesses()
-  const updateStage = useUpdateStage()
-  const deleteStage = useDeleteStage()
-  const reorder = useReorderStages()
-  const [instructions, setInstructions] = useState(stage.stage_instructions ?? "")
-  const [name, setName] = useState(stage.name)
-  const [showDefaults, setShowDefaults] = useState(false)
-  const role = roles.find((r) => r.key === stage.role)
-  const style = ROLE_STYLE[stage.role] ?? ROLE_STYLE.custom
-  // Precedence: stage → engineer → project → server default (services/llm.py resolve_model)
-  const assignedEngineer = engineers?.find((e) => e.id === stage.assigned_engineer_id)
-  const providers = (Object.keys(PROVIDER_LABELS) as ModelOption["provider"][]).filter((p) => models.some((m) => m.provider === p))
-
-  async function patch(data: Partial<WorkflowStageCreate>) {
-    try {
-      await updateStage.mutateAsync({ workflowId, stageId: stage.id, ...data })
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update stage")
-    }
-  }
-
-  function move(dir: -1 | 1) {
-    const target = index + dir
-    if (target < 0 || target >= total) return
-    const items = siblings.map((s, i) => ({ id: s.id, stage_order: i }))
-    ;[items[index].stage_order, items[target].stage_order] = [items[target].stage_order, items[index].stage_order]
-    reorder.mutate({ workflowId, stages: items })
-  }
-
-  async function handleDelete() {
-    if (!confirm(`Delete stage "${stage.name}"?`)) return
-    try {
-      await deleteStage.mutateAsync({ workflowId, stageId: stage.id })
-      toast.success("Stage deleted")
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to delete stage")
-    }
-  }
-
+function HowItWorksDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   return (
-    <div className="surface p-4">
-      <div className="mb-4 flex items-center gap-2">
-        <div className="flex flex-col gap-0.5">
-          <button onClick={() => move(-1)} disabled={index === 0} aria-label="Move stage up" className="rounded p-0.5 hover:bg-muted disabled:opacity-30">
-            <ArrowUp className="h-3.5 w-3.5" />
-          </button>
-          <button onClick={() => move(1)} disabled={index === total - 1} aria-label="Move stage down" className="rounded p-0.5 hover:bg-muted disabled:opacity-30">
-            <ArrowDown className="h-3.5 w-3.5" />
-          </button>
-        </div>
-        <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border", style.className)}>
-          {style.icon}
-        </span>
-        <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => name.trim() && name !== stage.name && patch({ name: name.trim() })}
-          aria-label="Stage name"
-          className="flex-1 font-semibold"
-        />
-        {stage.is_ai_executable
-          ? <span className="hidden items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] text-blue-700 sm:flex"><Bot className="h-3 w-3" /> AI</span>
-          : <span className="hidden items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700 sm:flex"><UserCheck className="h-3 w-3" /> Manual</span>}
-        <button onClick={handleDelete} aria-label={`Delete stage ${stage.name}`} className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      <div className="mb-4 grid gap-3 sm:grid-cols-[200px_1fr]">
-        <Field label="Role">
-          <Select value={stage.role} onChange={(e) => patch({ role: e.target.value as StageRoleKey })}>
-            {roles.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
-            {roles.length === 0 && <option value={stage.role}>{stage.role}</option>}
-          </Select>
-        </Field>
-        <div className="rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground sm:mt-5">
-          {role ? (
-            <>
-              {role.description}
-              {role.produces.length > 0 && (
-                <span className="mt-1 block">
-                  Produces: {role.produces.map((p) => (
-                    <span key={p} className="mr-1 rounded bg-background px-1.5 py-0.5 font-mono text-[10px] text-foreground">{p}</span>
-                  ))}
-                </span>
-              )}
-            </>
-          ) : "Loading role…"}
-        </div>
-      </div>
-
-      <div className="mb-4 grid gap-2 sm:grid-cols-3">
-        <ToggleRow
-          label="Run by AI"
-          hint="Off = a manual checkpoint a human completes and approves."
-          checked={stage.is_ai_executable}
-          onChange={(v) => patch({ is_ai_executable: v })}
-        />
-        <ToggleRow
-          label="Approval gate"
-          hint="Pause for human sign-off after the stage completes."
-          checked={stage.requires_human_approval}
-          onChange={(v) => patch({ requires_human_approval: v })}
-        />
-        <ToggleRow
-          label="Wait for open questions"
-          hint="Park the result until blocking questions are answered or deferred."
-          checked={stage.block_on_open_questions}
-          onChange={(v) => patch({ block_on_open_questions: v })}
-        />
-      </div>
-
-      <div className="mb-4 grid gap-2 sm:grid-cols-2">
-        <Field label="Assigned engineer">
-          <Select
-            value={stage.assigned_engineer_id ?? ""}
-            onChange={(e) => patch({ assigned_engineer_id: e.target.value || null })}
-          >
-            <option value="">Any engineer</option>
-            {(engineers ?? []).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </Select>
-        </Field>
-        <Field
-          label="Model"
-          hint={stage.model ? "Overrides the engineer and project model for this stage." : undefined}
-        >
-          <Select
-            value={stage.model ?? ""}
-            onChange={(e) => patch({ model: e.target.value || null })}
-            disabled={!stage.is_ai_executable}
-            aria-label="Stage model"
-          >
-            <option value="">
-              {assignedEngineer ? `Inherit — ${assignedEngineer.model_name}` : "Inherit — engineer or project model"}
-            </option>
-            {stage.model && !models.some((m) => m.id === stage.model) && (
-              <option value={stage.model}>{stage.model}</option>
-            )}
-            {providers.map((p) => (
-              <optgroup key={p} label={PROVIDER_LABELS[p]}>
-                {models.filter((m) => m.provider === p).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </optgroup>
-            ))}
-          </Select>
-        </Field>
-      </div>
-
-      <Field label="Harness" className="mb-4"
-        hint={stage.harness_id
-          ? "Pinned: this stage's runs use this harness's subagents, routing, gate and limits."
-          : (harnesses ?? []).some((h) => h.is_default) ? `Inherits the organization default — ${(harnesses ?? []).find((h) => h.is_default)?.name}.` : "Inherits Gravel's built-in harness for the role."}>
-        <Select
-          value={stage.harness_id ?? ""}
-          onChange={(e) => patch({ harness_id: e.target.value || null })}
-          disabled={!stage.is_ai_executable}
-          aria-label="Stage harness"
-        >
-          <option value="">Inherit — organization default or built-in</option>
-          {(harnesses ?? []).map((h) => <option key={h.id} value={h.id}>{h.name}{h.roles.length && !h.roles.includes(stage.role) ? ` (meant for ${h.roles.join(", ")})` : ""}</option>)}
-        </Select>
-      </Field>
-
-      <Field label="On success, go to" className="mb-2"
-        hint={stage.next_stage_id ? "Skips the order above; an edge back to an earlier stage makes a loop (the stop rule parks it after 10 visits)." : undefined}>
-        <Select
-          value={stage.next_stage_id ?? ""}
-          onChange={(e) => patch({ next_stage_id: e.target.value || null })}
-          aria-label="Next stage on success"
-        >
-          <option value="">{index === total - 1 ? "Done — the task is complete" : `Next in order — ${siblings[index + 1]?.name}`}</option>
-          {siblings.filter((s) => s.id !== stage.id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </Select>
-      </Field>
-
-      <div className="mb-4 grid grid-cols-[1fr_110px] gap-2">
-        <Field label="On failure, rework via">
-          <Select
-            value={stage.rework_target_stage_id ?? ""}
-            onChange={(e) => patch({ rework_target_stage_id: e.target.value || null })}
-          >
-            <option value="">None — wait for a human</option>
-            {siblings.filter((s) => s.id !== stage.id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </Select>
-        </Field>
-        <Field label="Max attempts">
-          <Input
-            type="number" min={1} max={10}
-            defaultValue={stage.max_rework_attempts}
-            onBlur={(e) => {
-              const v = parseInt(e.target.value, 10)
-              if (v >= 1 && v !== stage.max_rework_attempts) patch({ max_rework_attempts: v })
-            }}
-          />
-        </Field>
-      </div>
-
-      <Field
-        label="Stage instructions"
-        hint={instructions.trim() ? "Custom instructions replace the role's defaults." : "Empty — this stage uses the role's default instructions."}
-      >
-        <Textarea
-          value={instructions}
-          onChange={(e) => setInstructions(e.target.value)}
-          onBlur={() => (instructions || null) !== stage.stage_instructions && patch({ stage_instructions: instructions || null })}
-          rows={3}
-          placeholder={role?.default_instructions ? "Using role defaults — type to override…" : `Complete the '${stage.name}' stage for this task.`}
-          className="font-mono text-xs"
-        />
-      </Field>
-      {!instructions.trim() && role?.default_instructions && (
-        <div className="mt-2">
-          <button
-            onClick={() => setShowDefaults((v) => !v)}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
-            aria-expanded={showDefaults}
-          >
-            {showDefaults ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            Preview role defaults
-          </button>
-          {showDefaults && (
-            <div className="mt-2 space-y-2">
-              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
-                {role.default_instructions}
-              </pre>
-              <Button size="sm" variant="outline" onClick={() => setInstructions(role.default_instructions)}>
-                Copy into editor to customize
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>How a workflow runs</DialogTitle>
+        </DialogHeader>
+        <ol className="space-y-2.5 text-sm">
+          <li><b>Down the middle.</b> A task runs each stage top to bottom, unless a stage names another stage <i>on success</i> (drawn on the left).</li>
+          <li><b>Gates.</b> An approval gate pauses after the stage; the task waits in Attention for a person. A manual step waits for a person to do the work.</li>
+          <li><b>Rework.</b> When a stage fails, its rework edge (dashed, left) sends the task back, up to its max attempts.</li>
+          <li><b>Loops.</b> A loop (right, in the accent color) repeats its stages until the check stage confirms the exit condition. Each pass gets the check’s findings; the loop stops after its pass limit or budget and then asks a person, or proceeds.</li>
+          <li><b>Safety net.</b> The stop rule parks a task that enters one stage 10 times without a human approval.</li>
+        </ol>
+        <PipelineLegend />
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -315,127 +94,180 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
   const { id } = use(params)
   const { data: wf, isLoading } = useWorkflow(id)
   const { data: meta } = useMeta()
+  const { data: engineers } = useEngineers()
+  const { data: projects } = useProjects()
   const updateWorkflow = useUpdateWorkflow()
-  const addStage = useAddStage()
-  const [newStageName, setNewStageName] = useState("")
-  const [newStageRole, setNewStageRole] = useState<StageRoleKey>("custom")
+  const [selected, setSelected] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [loopDialog, setLoopDialog] = useState<{ loop: WorkflowLoop | null; preset?: { entry?: string; check?: string } } | null>(null)
 
-  async function handleAddStage() {
-    if (!newStageName.trim()) return
-    try {
-      await addStage.mutateAsync({ workflowId: id, name: newStageName.trim(), role: newStageRole })
-      setNewStageName("")
-      setNewStageRole("custom")
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to add stage")
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !loopDialog && !addOpen && !helpOpen) setSelected(null)
     }
-  }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [loopDialog, addOpen, helpOpen])
 
   if (isLoading || !wf) {
     return (
-      <Page>
-        <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="surface h-40 animate-pulse bg-muted/40" />)}</div>
-      </Page>
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading workflow" />
+      </div>
     )
   }
 
-  const stages = [...wf.stages].sort((a, b) => a.stage_order - b.stage_order)
+  const stages = wf.stages
+  const loops = wf.loops ?? []
   const roles = meta?.stage_roles ?? []
-  const graph = stageGraph(stages, roles)
-  const unreachable = unreachableStages(stages, graph.edges)
+  const stage = stages.find((s) => s.id === selected) ?? null
+  const unreachable = unreachableStages(stages, loops)
+  const usedBy = (projects ?? []).filter((p) => p.workflow_id === wf.id)
 
   return (
-    <Page>
-      <Link href="/workflows" className="mb-3 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-3 w-3" /> Workflows
-      </Link>
-      <div className="mb-1 flex items-center gap-2">
-        <GitBranch className="h-5 w-5 shrink-0 text-primary" />
-        <input
-          defaultValue={wf.name}
-          aria-label="Workflow name"
-          onBlur={(e) => {
-            const v = e.target.value.trim()
-            if (v && v !== wf.name) updateWorkflow.mutate({ id, name: v })
-          }}
-          className="flex-1 rounded bg-transparent px-1 text-xl font-semibold tracking-tight focus:outline-none focus:ring-1 focus:ring-ring"
-        />
-      </div>
-      <input
-        defaultValue={wf.description ?? ""}
-        aria-label="Workflow description"
-        placeholder="Add a description…"
-        onBlur={(e) => {
-          const v = e.target.value.trim()
-          if (v !== (wf.description ?? "")) updateWorkflow.mutate({ id, description: v })
-        }}
-        className="mb-6 w-full rounded bg-transparent px-1 text-sm text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-      />
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-background px-4 py-2.5 sm:px-6">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Link href="/workflows" className="hover:text-foreground">Workflows</Link>
+            <ChevronRight className="h-3 w-3" />
+            <input
+              defaultValue={wf.name}
+              key={wf.name}
+              aria-label="Workflow name"
+              onBlur={(e) => {
+                const v = e.target.value.trim()
+                if (v && v !== wf.name) updateWorkflow.mutate({ id, name: v })
+              }}
+              className="min-w-0 flex-1 rounded bg-transparent px-1 text-base font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <div className="mt-0.5 flex min-w-0 items-center gap-2">
+            <Tooltip content="Copy the workflow id (for the API and the gravel CLI)">
+              <button
+                onClick={() => { navigator.clipboard?.writeText(wf.id).then(() => toast.success("Workflow id copied")).catch(() => {}) }}
+                className="inline-flex shrink-0 items-center gap-1 rounded px-1 font-mono text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                wf_{wf.id.slice(0, 18)} <Copy className="h-3 w-3" />
+              </button>
+            </Tooltip>
+            <input
+              defaultValue={wf.description ?? ""}
+              key={wf.description ?? ""}
+              aria-label="Workflow description"
+              placeholder="Add a description…"
+              onBlur={(e) => {
+                const v = e.target.value.trim()
+                if (v !== (wf.description ?? "")) updateWorkflow.mutate({ id, description: v })
+              }}
+              className="hidden min-w-0 flex-1 truncate rounded bg-transparent px-1 text-xs text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring md:block"
+            />
+          </div>
+        </div>
 
-      <SectionCard title="Pipeline" description="How a task flows through this workflow." className="mb-6">
-        <Pipeline stages={stagesFromWorkflow(stages)} />
-        <div className="mt-3"><PipelineLegend /></div>
-        {stages.length > 1 && (
-          <>
-            <p className="mb-2 mt-5 text-xs font-medium">As a graph</p>
-            <GraphView {...graph} ariaLabel="Workflow stages and their edges" />
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              Solid arrows: where a stage goes when it succeeds. Dashed: where it sends the task back on failure.
-            </p>
-            {unreachable.length > 0 && (
-              <p className="mt-1 text-[11px] font-medium text-warning">
-                Never reached from “{stages[0].name}”: {unreachable.map((s) => s.name).join(", ")}
-              </p>
-            )}
-          </>
-        )}
-      </SectionCard>
+        <div className="flex flex-wrap items-center gap-2">
+          {unreachable.length > 0 && (
+            <Tooltip content={`No path from “${stages.find((s) => s.stage_order === Math.min(...stages.map((x) => x.stage_order)))?.name}” reaches: ${unreachable.map((s) => s.name).join(", ")}. Tasks will never get there.`}>
+              <span tabIndex={0} className="inline-flex items-center gap-1 rounded-lg border border-warning/40 bg-warning/10 px-2.5 py-1 text-xs font-medium text-warning">
+                <AlertTriangle className="h-3.5 w-3.5" /> {unreachable.length} unreachable
+              </span>
+            </Tooltip>
+          )}
+          <Tooltip content={usedBy.length ? `Used by ${usedBy.map((p) => p.name).join(", ")}. Changes apply to their next stage runs.` : "No project uses this workflow yet — pick it when you create or edit a project."}>
+            <span tabIndex={0} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs text-muted-foreground">
+              <FolderKanban className="h-3.5 w-3.5" /> {usedBy.length} project{usedBy.length === 1 ? "" : "s"}
+            </span>
+          </Tooltip>
+          <span className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs text-muted-foreground">
+            {stages.length} stage{stages.length === 1 ? "" : "s"}
+            <span className="text-muted-foreground/50">·</span>
+            <Repeat className="h-3 w-3 text-primary" /> {loops.length} loop{loops.length === 1 ? "" : "s"}
+            <HelpHint term="loop" />
+          </span>
+        </div>
+      </header>
 
-      <div className={cn("space-y-3", (updateWorkflow.isPending || addStage.isPending) && "opacity-70")}>
-        {stages.map((stage, i) => (
-          <StageCard
-            key={stage.id}
-            stage={stage}
-            index={i}
-            total={stages.length}
-            workflowId={id}
-            siblings={stages}
-            roles={roles}
-            models={meta?.models ?? []}
-          />
-        ))}
-      </div>
-
-      <div className="surface mt-4 flex flex-col gap-2 p-3 sm:flex-row">
-        <Input
-          value={newStageName}
-          onChange={(e) => setNewStageName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAddStage()}
-          placeholder="New stage name…"
-          aria-label="New stage name"
-          className="flex-1"
-        />
-        <Select
-          value={newStageRole}
-          onChange={(e) => setNewStageRole(e.target.value as StageRoleKey)}
-          aria-label="New stage role"
-          className="sm:w-40"
+      {/* Canvas + inspector */}
+      <div className="relative flex min-h-0 flex-1">
+        <div
+          className="relative min-w-0 flex-1 overflow-auto bg-muted/20 [background-image:radial-gradient(hsl(var(--border))_1px,transparent_1px)] [background-size:18px_18px]"
+          onClick={(e) => { if (e.target === e.currentTarget) setSelected(null) }}
         >
-          {roles.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
-          {roles.length === 0 && <option value="custom">Custom</option>}
-        </Select>
-        <Button size="sm" className="h-9" onClick={handleAddStage} disabled={!newStageName.trim() || addStage.isPending}>
-          {addStage.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add stage
-        </Button>
+          {stages.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+              <p className="text-sm font-semibold">No stages yet</p>
+              <p className="max-w-sm text-sm text-muted-foreground">Add the first stage — for example Plan, then Build, then Test — and wire a loop between Build and Test.</p>
+              <Button size="sm" onClick={() => setAddOpen(true)}><Plus className="h-3.5 w-3.5" /> Add stage</Button>
+            </div>
+          ) : (
+            <div className="min-w-max p-6 pb-28">
+              <WorkflowCanvas
+                stages={stages}
+                loops={loops}
+                roles={roles}
+                engineers={engineers ?? []}
+                selectedId={selected}
+                onSelect={setSelected}
+                onAddStage={() => setAddOpen(true)}
+                onEditLoop={(loop) => setLoopDialog({ loop })}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Floating toolbar */}
+        <div className={cn(
+          "pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4",
+          stage && "lg:right-[400px]",
+        )}>
+          <div className="pointer-events-auto flex items-center gap-1.5 rounded-xl border bg-background/95 p-1.5 shadow-lg backdrop-blur">
+            <Tooltip content="Add a stage at the end of the workflow">
+              <Button size="sm" onClick={() => setAddOpen(true)}><Plus className="h-3.5 w-3.5" /> Add stage</Button>
+            </Tooltip>
+            <Tooltip content="Repeat work → check until an exit condition holds">
+              <Button size="sm" variant="outline" onClick={() => setLoopDialog({ loop: null })} disabled={stages.length === 0}>
+                <Repeat className="h-3.5 w-3.5" /> Add loop
+              </Button>
+            </Tooltip>
+            <Tooltip content="How a workflow runs">
+              <Button size="sm" variant="ghost" onClick={() => setHelpOpen(true)} aria-label="How a workflow runs">
+                <HelpCircle className="h-3.5 w-3.5" /> <span className="hidden sm:inline">How it works</span>
+              </Button>
+            </Tooltip>
+          </div>
+        </div>
+
+        {stage && (
+          <aside className="absolute inset-y-0 right-0 z-20 w-full max-w-[400px] animate-slide-in-right border-l bg-background shadow-xl lg:static lg:shadow-none">
+            <StageInspector
+              key={stage.id}
+              stage={stage}
+              workflowId={wf.id}
+              stages={stages}
+              loops={loops}
+              roles={roles}
+              models={meta?.models ?? []}
+              onClose={() => setSelected(null)}
+              onEditLoop={(loop) => setLoopDialog({ loop })}
+              onNewLoop={(preset) => setLoopDialog({ loop: null, preset })}
+            />
+          </aside>
+        )}
       </div>
 
-      <p className="mt-4 text-[11px] text-muted-foreground">
-        Tasks flow through stages top to bottom unless a stage names where to go <b>on success</b>, which lets a
-        workflow skip, branch back or loop. A <b>manual</b> stage parks the task until a human approves it.
-        An <b>approval gate</b> pauses after the stage&apos;s AI run completes. A review or verification that requests
-        changes counts as a failure and follows the rework target until max attempts, then waits for a human.
-        A stage <b>model</b> overrides the engineer&apos;s model, which overrides the project default.
-      </p>
-    </Page>
+      <AddStageDialog open={addOpen} onOpenChange={setAddOpen} workflowId={wf.id} />
+      <HowItWorksDialog open={helpOpen} onOpenChange={setHelpOpen} />
+      <LoopEditor
+        open={!!loopDialog}
+        onOpenChange={(v) => { if (!v) setLoopDialog(null) }}
+        workflowId={wf.id}
+        stages={stages}
+        loops={loops}
+        loop={loopDialog?.loop ?? null}
+        preset={loopDialog?.preset}
+      />
+    </div>
   )
 }

@@ -62,6 +62,7 @@ function Board() {
       <PageHeader
         icon={<Kanban className="h-4 w-4" />}
         title="Board"
+        help="board"
         description={
           selectedProjectId
             ? "Lanes follow the project's workflow stages. Tasks move as stages complete and gates are approved."

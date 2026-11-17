@@ -126,7 +126,7 @@ async def drain_project(project_id: str, user_id: str) -> None:
 
                 artifacts = None
                 if stage:
-                    outcome, summary, usage, artifacts = await _execute_stage(db, stage, task, project, keys)
+                    outcome, summary, usage, artifacts = await _execute_stage(db, stage, task, project, keys, run)
                 else:
                     outcome, summary, usage = await _execute_phase(run.phase, task, project, keys)
 
@@ -164,7 +164,7 @@ _RESULT_OUTCOMES = {
 }
 
 
-async def _execute_stage(db, stage, task: Task, project: Project, keys: dict
+async def _execute_stage(db, stage, task: Task, project: Project, keys: dict, run=None
                          ) -> tuple[TaskRunOutcome, str, LLMResult | None, sdlc.StageArtifacts | None]:
     """Execute a workflow stage in-process: one structured LLM call, or simulated."""
     role_key = stage.role or "custom"
@@ -203,9 +203,12 @@ async def _execute_stage(db, stage, task: Task, project: Project, keys: dict
     task_text = sdlc.flatten_bundle_wikilinks(
         {"TASK.md": f"{task.title}\n\n{task.description or 'No description provided.'}"},
         await sdlc.accepted_knowledge(db, project))["TASK.md"]
+    from services.orchestrator import loop_brief
+    loop_md = await loop_brief(db, run) if run is not None else None
     prompt = (
         f"# Stage: {stage.name}\n\n{sdlc.stage_instructions(stage)}\n\n"
         + (f"## Harness instructions\n\n{extra}\n\n" if extra else "")
+        + (f"{loop_md}\n\n" if loop_md else "")
         + f"Documents this stage is expected to produce: {produces}.\n\n"
         f"# Task: {task_text}\n\n"
         f"## Acceptance criteria\n{sdlc.render_criteria(task)}\n\n"

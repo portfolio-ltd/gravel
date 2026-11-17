@@ -8,6 +8,7 @@ import EngineerCard from "@/components/EngineerCard"
 import RunnerAccounts from "@/components/RunnerAccounts"
 import { Button } from "@/components/ui/button"
 import type { Engineer, EngineerCreate } from "@/types"
+import { HelpHint } from "@/components/ui/tooltip"
 
 const TEMPLATES = [
   { value: "frontend", label: "Frontend Engineer", skills: "React, TypeScript, Tailwind CSS, Next.js, testing with Vitest" },
@@ -162,7 +163,7 @@ export default function EngineersPage() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <Bot className="w-5 h-5 text-primary" />
-            <h1 className="text-xl font-bold">Engineers</h1>
+            <h1 className="text-xl font-bold inline-flex items-center gap-1.5">Engineers<HelpHint term="engineer" side="bottom" /></h1>
             {engineers && (
               <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">
                 {engineers.filter((e) => e.status === "running").length} running

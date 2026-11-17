@@ -6,6 +6,9 @@ from schemas.workflow import (
     StageReorderRequest,
     WorkflowCreate,
     WorkflowFromTemplate,
+    WorkflowLoopCreate,
+    WorkflowLoopOut,
+    WorkflowLoopUpdate,
     WorkflowOut,
     WorkflowStageCreate,
     WorkflowStageOut,
@@ -30,7 +33,7 @@ async def create_workflow(body: WorkflowCreate, current_user: CurrentUser, org: 
 async def list_templates(current_user: CurrentUser):
     from services.sdlc import WORKFLOW_TEMPLATES
     return [{"key": k, "name": t["name"], "description": t["description"], "recommended": t["recommended"],
-             "stages": t["stages"]} for k, t in WORKFLOW_TEMPLATES.items()]
+             "stages": t["stages"], "loops": t.get("loops", [])} for k, t in WORKFLOW_TEMPLATES.items()]
 
 
 @router.post("/from-template", response_model=WorkflowOut, status_code=201)
@@ -102,3 +105,34 @@ async def delete_stage(workflow_id: str, stage_id: str, current_user: CurrentUse
     if not stage:
         raise HTTPException(404, "Stage not found in this workflow")
     await wf_service.delete_stage(db, stage)
+
+
+@router.post("/{workflow_id}/loops", response_model=WorkflowLoopOut, status_code=201)
+async def add_loop(workflow_id: str, body: WorkflowLoopCreate, current_user: CurrentUser, org: CurrentOrg, db: DB):
+    wf = await wf_service.get_workflow(db, workflow_id, org.id)
+    if not wf:
+        raise HTTPException(404, "Workflow not found")
+    return await wf_service.add_loop(db, wf, body)
+
+
+@router.patch("/{workflow_id}/loops/{loop_id}", response_model=WorkflowLoopOut)
+async def update_loop(workflow_id: str, loop_id: str, body: WorkflowLoopUpdate,
+                      current_user: CurrentUser, org: CurrentOrg, db: DB):
+    wf = await wf_service.get_workflow(db, workflow_id, org.id)
+    if not wf:
+        raise HTTPException(404, "Workflow not found")
+    loop = next((x for x in wf.loops if x.id == loop_id), None)
+    if not loop:
+        raise HTTPException(404, "Loop not found in this workflow")
+    return await wf_service.update_loop(db, wf, loop, body)
+
+
+@router.delete("/{workflow_id}/loops/{loop_id}", status_code=204)
+async def delete_loop(workflow_id: str, loop_id: str, current_user: CurrentUser, org: CurrentOrg, db: DB):
+    wf = await wf_service.get_workflow(db, workflow_id, org.id)
+    if not wf:
+        raise HTTPException(404, "Workflow not found")
+    loop = next((x for x in wf.loops if x.id == loop_id), None)
+    if not loop:
+        raise HTTPException(404, "Loop not found in this workflow")
+    await wf_service.delete_loop(db, loop)

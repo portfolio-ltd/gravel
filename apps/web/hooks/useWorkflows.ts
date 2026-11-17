@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
-import type { Workflow, WorkflowCreate, WorkflowStage, WorkflowStageCreate } from "@/types"
+import type { Workflow, WorkflowCreate, WorkflowLoop, WorkflowLoopCreate, WorkflowStage, WorkflowStageCreate } from "@/types"
 
 export function useWorkflows() {
   return useQuery<Workflow[]>({
@@ -91,6 +91,35 @@ export function useCreateWorkflowFromTemplate() {
   return useMutation({
     mutationFn: (data: { template_key: string; name?: string }) =>
       apiFetch<Workflow>("/api/workflows/from-template", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: invalidate,
+  })
+}
+
+// ── Loops ─────────────────────────────────────────────────────────────────────
+
+export function useAddLoop() {
+  const invalidate = useInvalidateWorkflows()
+  return useMutation({
+    mutationFn: ({ workflowId, ...data }: WorkflowLoopCreate & { workflowId: string }) =>
+      apiFetch<WorkflowLoop>(`/api/workflows/${workflowId}/loops`, { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: invalidate,
+  })
+}
+
+export function useUpdateLoop() {
+  const invalidate = useInvalidateWorkflows()
+  return useMutation({
+    mutationFn: ({ workflowId, loopId, ...data }: Partial<WorkflowLoopCreate> & { workflowId: string; loopId: string }) =>
+      apiFetch<WorkflowLoop>(`/api/workflows/${workflowId}/loops/${loopId}`, { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: invalidate,
+  })
+}
+
+export function useDeleteLoop() {
+  const invalidate = useInvalidateWorkflows()
+  return useMutation({
+    mutationFn: ({ workflowId, loopId }: { workflowId: string; loopId: string }) =>
+      apiFetch(`/api/workflows/${workflowId}/loops/${loopId}`, { method: "DELETE" }),
     onSuccess: invalidate,
   })
 }

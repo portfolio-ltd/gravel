@@ -46,7 +46,7 @@ from models.task_run import (
     TaskRunOutcome,
     TaskRunPhase,
 )
-from models.workflow import WorkflowStage
+from models.workflow import WorkflowLoop, WorkflowStage
 from services import sdlc, ws_manager
 from services.llm import resolve_model
 from services.tasks import recalculate_progress
@@ -148,28 +148,123 @@ async def _visits_since_approval(db: AsyncSession, task_id: str, stage_id: str) 
     last_approval = (await db.execute(
         select(func.max(TaskRun.approved_at)).where(TaskRun.task_id == task_id)
     )).scalar_one()
+    # Loop passes are bounded by their loop's own max_iterations
     q = select(func.count()).select_from(TaskRun).where(
-        TaskRun.task_id == task_id, TaskRun.workflow_stage_id == stage_id
+        TaskRun.task_id == task_id, TaskRun.workflow_stage_id == stage_id, TaskRun.loop_id.is_(None)
     )
     if last_approval is not None:
         q = q.where(TaskRun.started_at > last_approval)
     return (await db.execute(q)).scalar_one()
 
 
+# ── Loop engineering ─────────────────────────────────────────────────────────
+
+async def loops_of(db: AsyncSession, workflow_id: str) -> list[WorkflowLoop]:
+    return list((await db.execute(
+        select(WorkflowLoop).where(WorkflowLoop.workflow_id == workflow_id)
+    )).scalars())
+
+
+def _loop_context(loops: list[WorkflowLoop], prev: TaskRun | None, prev_stage: WorkflowStage | None,
+                  target: WorkflowStage) -> tuple[WorkflowLoop | None, int | None]:
+    """Which loop pass a run on `target` belongs to.
+
+    A pass continues from stage to stage until the loop's check stage has
+    run; reaching a loop's start stage from outside begins pass 1.
+    """
+    if prev is not None and prev.loop_id and prev_stage is not None:
+        loop = next((x for x in loops if x.id == prev.loop_id), None)
+        if loop is not None and prev_stage.id != loop.check_stage_id:
+            return loop, prev.loop_iteration or 1
+    starting = next((x for x in loops if x.entry_stage_id == target.id), None)
+    if starting is not None:
+        return starting, 1
+    return None, None
+
+
+async def loop_spend(db: AsyncSession, task_id: str, loop: WorkflowLoop) -> float:
+    """Estimated cost of the current round of this loop (since its latest pass 1)."""
+    from sqlalchemy import func
+
+    from models.token_usage import TokenUsage
+    round_start = (await db.execute(
+        select(func.max(TaskRun.started_at)).where(
+            TaskRun.task_id == task_id, TaskRun.loop_id == loop.id, TaskRun.loop_iteration == 1,
+        )
+    )).scalar_one()
+    q = select(func.coalesce(func.sum(TokenUsage.cost_usd), 0.0)).join(
+        TaskRun, TaskRun.id == TokenUsage.task_run_id
+    ).where(TaskRun.task_id == task_id, TaskRun.loop_id == loop.id)
+    if round_start is not None:
+        q = q.where(TaskRun.started_at >= round_start)
+    return float((await db.execute(q)).scalar_one() or 0.0)
+
+
+async def loop_brief(db: AsyncSession, run: TaskRun) -> str | None:
+    """LOOP.md for a run inside a loop: which pass, the exit condition, the role it plays."""
+    if not run.loop_id:
+        return None
+    loop = await db.get(WorkflowLoop, run.loop_id)
+    if loop is None:
+        return None
+    entry = await db.get(WorkflowStage, loop.entry_stage_id)
+    check = await db.get(WorkflowStage, loop.check_stage_id)
+    n = run.loop_iteration or 1
+    lines = [
+        f"# Loop: {loop.name}",
+        "",
+        f"This run is pass {n} of at most {loop.max_iterations} through the loop "
+        f"'{entry.name if entry else '?'}' → '{check.name if check else '?'}'.",
+        "",
+        "## Exit condition",
+        "",
+        loop.goal or "The check stage passes.",
+        "",
+    ]
+    if check is not None and run.workflow_stage_id == check.id:
+        lines += [
+            "## Your part: the check",
+            "",
+            "Report a completed outcome only if the exit condition holds. Otherwise report `failed` and say "
+            "precisely what is still missing in the summary and blocking reason — that feedback starts the "
+            "next pass.",
+            "",
+        ]
+    else:
+        lines += [
+            "## Your part: work toward the exit condition",
+            "",
+            "The loop ends when the check stage confirms the exit condition.",
+            "",
+        ]
+    if n > 1:
+        lines += ["The previous pass fell short. Read the latest comments for the check's findings and "
+                  "address every one before anything else.", ""]
+    return "\n".join(lines)
+
+
 async def enter_stage(
     db: AsyncSession, task: Task, stage: WorkflowStage,
     stages: list[WorkflowStage] | None = None,
+    *, prev: TaskRun | None = None, prev_stage: WorkflowStage | None = None,
+    loop: WorkflowLoop | None = None, iteration: int | None = None,
 ) -> TaskRun | None:
     """Move a task onto a workflow stage and create its run.
 
     AI-executable stages get a pending, claimable run. Non-AI stages get a
     "checkpoint run" born terminal and gated — it shows on the attention
     surface and approving it advances the task.
+
+    The run is stamped with its loop pass: pass `loop`/`iteration` to start a
+    pass explicitly, or `prev`/`prev_stage` (the run that led here) to carry
+    the current pass along.
     """
     if await open_run(db, task.id):
         return None
     if stages is None:
         stages = await ordered_stages(db, stage.workflow_id)
+    if loop is None:
+        loop, iteration = _loop_context(await loops_of(db, stage.workflow_id), prev, prev_stage, stage)
 
     task.workflow_stage_id = stage.id
     task.status = stage_task_status(stages, stage)
@@ -183,6 +278,8 @@ async def enter_stage(
         phase=TaskRunPhase.build,
         workflow_stage_id=stage.id,
         attempt_number=attempt,
+        loop_id=loop.id if loop else None,
+        loop_iteration=iteration if loop else None,
         started_at=now,
     )
     parked = not stage.is_ai_executable or looping
@@ -546,7 +643,7 @@ async def _apply_stage_outcome(
         if nxt is None:
             task.status = TaskStatus.done
             return f"Completed: {task.title}"
-        await enter_stage(db, task, nxt, stages)
+        await enter_stage(db, task, nxt, stages, prev=run, prev_stage=stage)
         return f"Stage '{stage.name}' complete: {task.title}"
 
     if outcome == TaskRunOutcome.needs_human_input:
@@ -554,7 +651,11 @@ async def _apply_stage_outcome(
         run.blocking_reason = blocking_reason or f"Stage '{stage.name}' needs human input"
         return None
 
-    # failed / blocked → rework loop
+    # failed / blocked → the stage's loop, else its rework edge
+    loop = next((x for x in await loops_of(db, stage.workflow_id) if x.check_stage_id == stage.id), None)
+    if loop is not None:
+        return await _iterate_loop(db, run, task, stage, stages, loop, outcome, blocking_reason)
+
     task.rework_count += 1
     target = None
     if stage.rework_target_stage_id and task.rework_count < stage.max_rework_attempts:
@@ -575,6 +676,57 @@ async def _apply_stage_outcome(
         f"Stage '{stage.name}' {outcome.value} (attempt {run.attempt_number}) — needs human attention"
     )
     return None
+
+
+async def _iterate_loop(
+    db: AsyncSession, run: TaskRun, task: Task, stage: WorkflowStage, stages: list[WorkflowStage],
+    loop: WorkflowLoop, outcome: TaskRunOutcome, blocking_reason: str | None,
+) -> str | None:
+    """The loop's check failed: start another pass, or apply the exhaustion policy."""
+    done = (run.loop_iteration or 1) if run.loop_id == loop.id else 1
+    if run.loop_id != loop.id:  # reached the check from outside the loop — this was pass 1
+        run.loop_id, run.loop_iteration = loop.id, 1
+    await db.flush()
+    spent = await loop_spend(db, task.id, loop) if loop.max_cost_usd else 0.0
+    over_budget = loop.max_cost_usd is not None and spent >= loop.max_cost_usd
+    entry = next((s for s in stages if s.id == loop.entry_stage_id), None)
+    findings = (blocking_reason or run.summary or "").strip()
+
+    if entry is not None and done < loop.max_iterations and not over_budget:
+        task.rework_count += 1
+        body = (f"Loop '{loop.name}': pass {done} of {loop.max_iterations} did not meet the exit condition. "
+                f"Starting pass {done + 1} at '{entry.name}'.")
+        if loop.carry_feedback and findings:
+            body += f"\n\nFindings from '{stage.name}':\n{findings}"
+        db.add(TaskComment(id=new_uuid(), task_id=task.id, task_run_id=run.id,
+                           author_type=CommentAuthorType.ai, body=body))
+        await enter_stage(db, task, entry, stages, loop=loop, iteration=done + 1)
+        return f"Loop '{loop.name}' pass {done} fell short — starting pass {done + 1}: {task.title}"
+
+    why = (f"its ${loop.max_cost_usd:.2f} budget is used (${spent:.2f})" if over_budget
+           else f"{done} of {loop.max_iterations} passes ran")
+    if loop.on_exhausted == "proceed":
+        db.add(TaskComment(
+            id=new_uuid(), task_id=task.id, task_run_id=run.id, author_type=CommentAuthorType.ai,
+            body=(f"Loop '{loop.name}' stopped — {why} without meeting the exit condition. "
+                  "The loop is set to proceed, so the task moves on."
+                  + (f"\n\nOpen findings from '{stage.name}':\n{findings}" if findings else "")),
+        ))
+        nxt = next_stage_of(stages, stage)
+        if nxt is None:
+            task.status = TaskStatus.done
+            return f"Loop '{loop.name}' exhausted — proceeding, completed: {task.title}"
+        await enter_stage(db, task, nxt, stages, prev=run, prev_stage=stage)
+        return f"Loop '{loop.name}' exhausted — proceeding: {task.title}"
+
+    run.approval_required = True
+    run.blocking_reason = (
+        f"Loop '{loop.name}' stopped — {why} without meeting the exit condition"
+        + (f" ({loop.goal})" if loop.goal else "")
+        + ". Approve to run another round, or request changes."
+        + (f" Last findings: {findings}" if findings else "")
+    )
+    return f"Loop '{loop.name}' exhausted — needs a human: {task.title}"
 
 
 async def approval_blocker(db: AsyncSession, run: TaskRun) -> str | None:
@@ -640,14 +792,21 @@ async def _advance_stage_after_approval(db: AsyncSession, run: TaskRun, task: Ta
     # approving a checkpoint (non-AI stage) means "human did the work, advance".
     parked = run.outcome in (TaskRunOutcome.needs_human_input, TaskRunOutcome.blocked, TaskRunOutcome.failed)
     if parked and stage.is_ai_executable:
-        await enter_stage(db, task, stage, stages)
+        # An exhausted loop's check: approving starts a fresh round at the loop's start
+        loop = await db.get(WorkflowLoop, run.loop_id) if run.loop_id else None
+        if loop is not None and loop.check_stage_id == stage.id and run.outcome != TaskRunOutcome.needs_human_input:
+            entry = next((s for s in stages if s.id == loop.entry_stage_id), None)
+            if entry is not None:
+                await enter_stage(db, task, entry, stages, loop=loop, iteration=1)
+                return
+        await enter_stage(db, task, stage, stages, loop=loop, iteration=run.loop_iteration if loop else None)
         return
 
     nxt = next_stage_of(stages, stage)
     if nxt is None:
         await _finish_task(db, task, project)
     else:
-        await enter_stage(db, task, nxt, stages)
+        await enter_stage(db, task, nxt, stages, prev=run, prev_stage=stage)
 
 
 async def _finish_task(db: AsyncSession, task: Task, project: Project) -> None:

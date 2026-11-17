@@ -231,6 +231,10 @@ def _stage(name: str, role: str, *, approval: bool = False, ai: bool = True,
     }
 
 
+def _loop(name: str, entry: str, check: str, goal: str, *, max_iterations: int = 3) -> dict:
+    return {"name": name, "entry": entry, "check": check, "goal": goal, "max_iterations": max_iterations}
+
+
 WORKFLOW_TEMPLATES: dict[str, dict] = {
     "spec-driven": {
         "name": "Spec-driven delivery",
@@ -246,6 +250,10 @@ WORKFLOW_TEMPLATES: dict[str, dict] = {
             _stage("Review", "review", rework_to="Build"),
             _stage("Verify", "verify", approval=True, rework_to="Build"),
         ],
+        "loops": [
+            _loop("Review loop", "Build", "Review",
+                  "The reviewer approves: the change meets every acceptance criterion and has no blocking findings."),
+        ],
     },
     "plan-build-review": {
         "name": "Plan, build, review",
@@ -256,6 +264,26 @@ WORKFLOW_TEMPLATES: dict[str, dict] = {
             _stage("Plan", "plan", approval=True, block_questions=True),
             _stage("Build", "build"),
             _stage("Review", "review", approval=True, rework_to="Build"),
+        ],
+        "loops": [
+            _loop("Review loop", "Build", "Review",
+                  "The reviewer approves: the change meets every acceptance criterion and has no blocking findings."),
+        ],
+    },
+    "build-until-green": {
+        "name": "Build until green",
+        "description": "Loop engineering: an approved plan, then build → verify passes repeat until the tests "
+                       "are green (at most 5 passes), then a human review.",
+        "recommended": False,
+        "stages": [
+            _stage("Plan", "plan", approval=True, block_questions=True),
+            _stage("Build", "build"),
+            _stage("Test", "verify"),
+            _stage("Review", "review", approval=True, rework_to="Build"),
+        ],
+        "loops": [
+            _loop("Green loop", "Build", "Test",
+                  "Every test passes, including new tests that cover each acceptance criterion.", max_iterations=5),
         ],
     },
     "classic": {
@@ -307,8 +335,15 @@ async def instantiate_template(db: AsyncSession, template_key: str, owner_id: st
     for spec in tpl["stages"]:
         if spec["rework_to"]:
             by_name[spec["name"]].rework_target_stage_id = by_name[spec["rework_to"]].id
+    from models.workflow import WorkflowLoop
+    for spec in tpl.get("loops", []):
+        db.add(WorkflowLoop(
+            id=new_uuid(), workflow_id=wf.id, name=spec["name"], goal=spec["goal"],
+            entry_stage_id=by_name[spec["entry"]].id, check_stage_id=by_name[spec["check"]].id,
+            max_iterations=spec["max_iterations"],
+        ))
     await db.flush()
-    await db.refresh(wf, ["stages"])
+    await db.refresh(wf, ["stages", "loops"])
     return wf
 
 

@@ -33,7 +33,7 @@ from .task_run import (
 )
 from .token_usage import TokenUsage
 from .user import User, UserRole
-from .workflow import Workflow, WorkflowStage
+from .workflow import Workflow, WorkflowLoop, WorkflowStage
 
 __all__ = [
     "ApiToken", "DeviceAuthorization", "LlmJob", "AsyncOperation",
@@ -47,7 +47,7 @@ __all__ = [
     "Engineer", "EngineerRuntime", "EngineerStatus",
     "TaskRun", "TaskRunLog", "TaskComment", "EvidenceArtifact",
     "TaskRunPhase", "TaskRunOutcome", "CommentAuthorType", "ArtifactType",
-    "Workflow", "WorkflowStage",
+    "Workflow", "WorkflowLoop", "WorkflowStage",
     "Organization", "OrganizationMember", "OrgRole",
     "Tag", "task_tags", "prd_tags",
     "PRD", "PRDComment", "PRDStatus",

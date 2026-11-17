@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import BaseModel
@@ -23,6 +23,12 @@ class Workflow(BaseModel):
         back_populates="workflow",
         cascade="all, delete-orphan",
         order_by="WorkflowStage.stage_order",
+    )
+    loops: Mapped[list["WorkflowLoop"]] = relationship(
+        "WorkflowLoop",
+        back_populates="workflow",
+        cascade="all, delete-orphan",
+        order_by="WorkflowLoop.created_at",
     )
 
 
@@ -66,3 +72,43 @@ class WorkflowStage(BaseModel):
     )
 
     workflow: Mapped["Workflow"] = relationship("Workflow", back_populates="stages")
+
+
+LOOP_ON_EXHAUSTED = ("ask_human", "proceed")
+
+
+class WorkflowLoop(BaseModel):
+    """A named, bounded cycle of stages (loop engineering).
+
+    A task runs from the entry stage to the check stage; that is one pass. When
+    the check stage passes, the task leaves the loop along the check stage's
+    success edge. When it fails (a failed/blocked run, or a review that
+    requests changes) the task starts another pass at the entry stage, carrying
+    the checker's feedback, until max_iterations passes or the cost budget are
+    used up. Then on_exhausted decides: ask a human, or proceed anyway.
+    A loop replaces the check stage's rework edge while it exists.
+    """
+    __tablename__ = "workflow_loops"
+    __table_args__ = (UniqueConstraint("workflow_id", "check_stage_id", name="uq_workflow_loops_check"),)
+
+    workflow_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Plain-language exit condition the check stage judges against
+    goal: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entry_stage_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workflow_stages.id", ondelete="CASCADE"), nullable=False
+    )
+    check_stage_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workflow_stages.id", ondelete="CASCADE"), nullable=False
+    )
+    max_iterations: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    # Estimated spend cap for one round of passes; None = no cap
+    max_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # LOOP_ON_EXHAUSTED: park for a human, or carry on down the success edge
+    on_exhausted: Mapped[str] = mapped_column(String(20), nullable=False, default="ask_human")
+    # Post the checker's findings to the task thread so the next pass sees them
+    carry_feedback: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    workflow: Mapped["Workflow"] = relationship("Workflow", back_populates="loops")

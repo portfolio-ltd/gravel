@@ -33,6 +33,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { rememberProject } from "@/lib/recentProjects"
 import { cn, formatRelativeTime } from "@/lib/utils"
 import type { Project, ProjectDetail as ProjectDetailData, TaskStatus } from "@/types"
+import { HelpHint } from "@/components/ui/tooltip"
 
 const STATUS_BADGE: Record<string, string> = {
   setup:    "bg-slate-100 text-slate-600",
@@ -570,7 +571,7 @@ function ProjectsView() {
     <div className="flex h-full flex-col md:flex-row">
       <aside className="flex shrink-0 flex-col border-b md:h-full md:w-72 md:border-b-0 md:border-r">
         <div className="flex items-center justify-between px-4 py-3">
-          <h1 className="text-sm font-semibold">Projects</h1>
+          <h1 className="text-sm font-semibold inline-flex items-center gap-1.5">Projects<HelpHint term="project" side="bottom" /></h1>
           <Button size="sm" className="h-7 gap-1 px-2.5 text-xs" onClick={() => setCreateOpen(true)}>
             <Plus className="h-3 w-3" /> New
           </Button>

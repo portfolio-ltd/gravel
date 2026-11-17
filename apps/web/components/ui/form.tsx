@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import { HelpHint } from "@/components/ui/tooltip"
+import type { GlossaryKey } from "@/lib/glossary"
 import { cn } from "@/lib/utils"
 
 const field =
@@ -27,12 +29,22 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
   return <label className={cn("block text-xs font-medium text-foreground/80", className)} {...props} />
 }
 
-export function Field({ label, hint, children, className }: {
-  label: string; hint?: React.ReactNode; children: React.ReactNode; className?: string
+export function Field({ label, hint, help, children, className }: {
+  label: string
+  hint?: React.ReactNode
+  /** A glossary term (or custom content) explained in a (?) tooltip next to the label */
+  help?: GlossaryKey | React.ReactNode
+  children: React.ReactNode
+  className?: string
 }) {
   return (
     <div className={cn("space-y-1.5", className)}>
-      <Label>{label}</Label>
+      <div className="flex items-center gap-1">
+        <Label>{label}</Label>
+        {help !== undefined && (typeof help === "string"
+          ? <HelpHint term={help as GlossaryKey} />
+          : <HelpHint content={help} label={label} />)}
+      </div>
       {children}
       {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>

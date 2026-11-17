@@ -8,6 +8,35 @@ All notable changes to Gravel are recorded here. The format follows
 
 ### Added
 
+- Loop engineering. A workflow can define loops: a start stage, a check stage,
+  a plain-language exit condition, a pass limit, an optional budget in USD,
+  what happens when it runs out (ask a person, or proceed) and whether the
+  check's findings carry into the next pass. A loop replaces its check stage's
+  rework edge. Runs record their pass, inside-loop runs get `LOOP.md`, and the
+  stop rule no longer counts loop passes. API: `/api/workflows/{id}/loops`.
+  New template **Build until green**, and the spec-driven and
+  plan-build-review templates now come with a Review loop. New **Loops** page.
+  Migration `013` adds `workflow_loops`, `task_runs.loop_id` and
+  `task_runs.loop_iteration`. See `docs/loops.md`.
+- Workflow canvas: the workflow editor is now a canvas. Stages are cards in
+  flow order, branches and rework edges run on the left, loops on the right.
+  Selecting a stage opens an inspector (Configure / Routing / Loops), and a
+  toolbar adds stages and loops. The header shows unreachable stages and which
+  projects use the workflow.
+- Integrations redesign: one grid of connections and available providers,
+  with category chips, All/Connected/Available counts and search. Each card
+  shows its status. A detail panel shows what Gravel does with the
+  integration, what engineers may do through it (with risk labels), a GitHub
+  access test, and settings. The connect dialog lists those capabilities up
+  front, and disconnecting shows the impact and asks you to type the name.
+- Tooltips across the app: a shared tooltip and a (?) help hint backed by one
+  glossary (`lib/glossary.ts`). They cover sidebar items, page titles, stage
+  settings, loop fields, pipeline chips and integration risk labels.
+- Navigation regrouped by intent: Home and Attention, then Work, Build
+  (with Loops), Knowledge and Manage. Each item has a one-line description in
+  its tooltip and in the command palette. The sidebar has a dismissible
+  **Get started** checklist that checks off against real data.
+
 - AI accounts for local runners: `gravel work --account <label>` (or
   `GRAVEL_ACCOUNT`) labels a runner with the Claude or ChatGPT account its CLI
   is signed in to. Use one runner per account with `CLAUDE_CONFIG_DIR` or

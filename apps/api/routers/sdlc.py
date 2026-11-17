@@ -64,7 +64,7 @@ async def meta(current_user: CurrentUser):
         ],
         "workflow_templates": [
             {"key": key, "name": t["name"], "description": t["description"], "recommended": t["recommended"],
-             "stages": [{k: v for k, v in s.items()} for s in t["stages"]]}
+             "stages": [{k: v for k, v in s.items()} for s in t["stages"]], "loops": t.get("loops", [])}
             for key, t in sdlc.WORKFLOW_TEMPLATES.items()
         ],
     }

@@ -52,6 +52,10 @@ its result is interpreted.
   run — or a review/verify verdict of `changes_requested` — sends the task back
   to the target stage until the attempt budget runs out, after which it parks
   for a person.
+- **Loops** (`workflow_loops`): a named, bounded cycle from a start stage to a
+  check stage, with an exit condition, a pass limit, an optional budget and a
+  rule for running out. A loop takes over its check stage's rework edge. See
+  [loops.md](loops.md).
 - **Manual stages** (`is_ai_executable = false`) create a checkpoint run that
   parks immediately; approving means "a person did this".
 
