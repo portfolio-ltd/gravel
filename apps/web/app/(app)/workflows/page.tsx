@@ -8,7 +8,8 @@ import { useWorkflows, useDeleteWorkflow, useCreateWorkflowFromTemplate } from "
 import { useMeta } from "@/hooks/useSdlc"
 import { Button } from "@/components/ui/button"
 import { EmptyState, Page, PageHeader } from "@/components/ui/page"
-import { Pipeline, PipelineLegend, TemplateCard, stagesFromWorkflow } from "@/components/workflow/Pipeline"
+import { LoopChips, Pipeline, PipelineLegend, TemplateCard, loopsFromWorkflow, stagesFromWorkflow } from "@/components/workflow/Pipeline"
+import { Tooltip } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 import { formatRelativeTime } from "@/lib/utils"
 
@@ -48,7 +49,8 @@ export default function WorkflowsPage() {
       <PageHeader
         icon={<GitBranch className="h-4 w-4" />}
         title="Workflows"
-        description="The stages a task moves through, who runs them, and where humans sign off."
+        help="workflow"
+        description="The stages a task moves through, who runs them, where humans sign off, and where work loops."
         actions={
           <Button size="sm" variant="outline" onClick={() => router.push("/workflows/new")}>
             <Plus className="h-3.5 w-3.5" /> Blank workflow
@@ -92,23 +94,28 @@ export default function WorkflowsPage() {
                   </div>
                   {wf.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{wf.description}</p>}
                   <Pipeline stages={stagesFromWorkflow(wf.stages)} size="sm" className="mt-2.5" />
+                  <LoopChips loops={loopsFromWorkflow(wf.stages, wf.loops)} className="mt-2" />
                 </div>
                 <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{formatRelativeTime(wf.created_at)}</span>
                 <div className="flex shrink-0 gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
-                  <button
-                    onClick={() => router.push(`/workflows/${wf.id}`)}
-                    className="rounded-lg p-1.5 hover:bg-muted"
-                    aria-label={`Edit ${wf.name}`}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(wf.id, wf.name)}
-                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    aria-label={`Delete ${wf.name}`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <Tooltip content="Open on the canvas">
+                    <button
+                      onClick={() => router.push(`/workflows/${wf.id}`)}
+                      className="rounded-lg p-1.5 hover:bg-muted"
+                      aria-label={`Edit ${wf.name}`}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="Delete — only when no project uses it">
+                    <button
+                      onClick={() => handleDelete(wf.id, wf.name)}
+                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      aria-label={`Delete ${wf.name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
             ))}

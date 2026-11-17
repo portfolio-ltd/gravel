@@ -57,6 +57,11 @@ class TaskRun(BaseModel):
         String(36), ForeignKey("workflow_stages.id", ondelete="SET NULL"), nullable=True, index=True
     )
     attempt_number: Mapped[int] = mapped_column(nullable=False, default=1)
+    # Loop engineering: the workflow loop this run belongs to and which pass
+    # (1-based) of the current round it is. Plain strings so history outlives
+    # a deleted loop.
+    loop_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    loop_iteration: Mapped[int | None] = mapped_column(nullable=True)
     # Harness the run was wrapped in (None for built-in defaults or in-process runs)
     harness_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("agent_harnesses.id", ondelete="SET NULL"), nullable=True

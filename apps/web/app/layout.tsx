@@ -4,6 +4,7 @@ import "./globals.css"
 import { AuthProvider } from "@/contexts/AuthContext"
 import { PreferencesProvider } from "@/contexts/PreferencesContext"
 import { QueryProvider } from "@/contexts/QueryProvider"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import ThemedToaster from "@/components/ThemedToaster"
 import { THEME_BOOT_SCRIPT } from "@/lib/theme"
 
@@ -44,7 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <QueryProvider>
           <AuthProvider>
             <PreferencesProvider>
-              {children}
+              <TooltipProvider delayDuration={250} skipDelayDuration={150}>
+                {children}
+              </TooltipProvider>
               <ThemedToaster />
             </PreferencesProvider>
           </AuthProvider>

@@ -9,6 +9,7 @@ import TagChip from "@/components/TagChip"
 import { Button } from "@/components/ui/button"
 import { cn, formatRelativeTime } from "@/lib/utils"
 import type { PRDStatus } from "@/types"
+import { HelpHint } from "@/components/ui/tooltip"
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft", in_review: "In Review", approved: "Approved",
@@ -36,7 +37,7 @@ export default function PRDsPage() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
-            <h1 className="text-xl font-bold">PRDs</h1>
+            <h1 className="text-xl font-bold inline-flex items-center gap-1.5">PRDs<HelpHint term="prd" side="bottom" /></h1>
           </div>
           <Button size="sm" onClick={() => router.push("/prds/new")}>
             <Plus className="w-3.5 h-3.5" /> New PRD

@@ -9,6 +9,7 @@ import { useOrg } from "@/contexts/OrgContext"
 import { usePreferences } from "@/contexts/PreferencesContext"
 import { useProjects } from "@/hooks/useProjects"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Tooltip } from "@/components/ui/tooltip"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown"
@@ -31,9 +32,10 @@ export function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
 
 export function SearchButton({ onClick, collapsed = false, className }: { onClick: () => void; collapsed?: boolean; className?: string }) {
   return (
+    <Tooltip content={collapsed ? "Search pages, projects and actions (⌘K)" : undefined} side="right">
     <button
       onClick={onClick}
-      title="Search (⌘K)"
+      aria-label="Search (⌘K)"
       className={cn(
         "flex h-8 items-center gap-2 rounded-lg border bg-background/60 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
         collapsed ? "w-8 justify-center" : "w-full px-2.5",
@@ -48,6 +50,7 @@ export function SearchButton({ onClick, collapsed = false, className }: { onClic
         </>
       )}
     </button>
+    </Tooltip>
   )
 }
 
@@ -58,10 +61,13 @@ export function NavLink({ item, collapsed, badge, onNavigate }: {
   const active = isActive(pathname, item.href)
   const Icon = item.icon
   return (
+    <Tooltip
+      side="right"
+      content={<><span className="block font-semibold">{item.label}</span><span className="text-muted-foreground">{item.hint}</span></>}
+    >
     <Link
       href={item.href}
       onClick={onNavigate}
-      title={collapsed ? item.label : undefined}
       aria-current={active ? "page" : undefined}
       className={cn(
         "group relative flex items-center gap-2.5 rounded-lg text-sm font-medium transition-colors",
@@ -75,13 +81,16 @@ export function NavLink({ item, collapsed, badge, onNavigate }: {
       {!collapsed && <span className="truncate">{item.label}</span>}
       {!!badge && badge > 0 && (
         <span className={cn(
-          "flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground",
-          collapsed ? "absolute -right-0.5 -top-0.5" : "ml-auto",
+          "flex items-center justify-center rounded-full font-semibold tabular-nums",
+          collapsed
+            ? "absolute -right-0.5 -top-0.5 h-4 min-w-4 bg-destructive px-1 text-[9px] text-destructive-foreground"
+            : "ml-auto h-5 min-w-5 bg-primary/15 px-1.5 text-[10px] text-primary",
         )}>
           {badge > 99 ? "99+" : badge}
         </span>
       )}
     </Link>
+    </Tooltip>
   )
 }
 
@@ -130,11 +139,12 @@ export function NavGroups({ collapsed, attentionCount, onNavigate }: {
         if (!items.length) return null
         return (
           <div key={group.label} className={cn("space-y-0.5", collapsed && "flex flex-col items-center")}>
-            {!collapsed && (
+            {!collapsed && group.label && (
               <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                 {group.label}
               </p>
             )}
+            {collapsed && group.label && <div className="mx-auto mb-1 h-px w-5 bg-sidebar-border" aria-hidden />}
             {items.map((item) => (
               <NavLink
                 key={item.href}
@@ -144,7 +154,7 @@ export function NavGroups({ collapsed, attentionCount, onNavigate }: {
                 badge={item.badge === "attention" ? attentionCount : undefined}
               />
             ))}
-            {group.label === "Workspace" && !collapsed && <div className="pt-4"><RecentProjects onNavigate={onNavigate} /></div>}
+            {group.label === "Work" && !collapsed && <div className="pt-3"><RecentProjects onNavigate={onNavigate} /></div>}
           </div>
         )
       })}
@@ -157,14 +167,15 @@ export function ThemeToggle({ className }: { className?: string }) {
   const next = prefs.theme === "light" ? "dark" : prefs.theme === "dark" ? "system" : "light"
   const Icon = prefs.theme === "light" ? Sun : prefs.theme === "dark" ? Moon : Laptop
   return (
+    <Tooltip content={`Theme: ${prefs.theme} — click for ${next}`}>
     <button
       onClick={() => update({ theme: next })}
-      title={`Theme: ${prefs.theme} (click for ${next})`}
       aria-label={`Switch theme to ${next}`}
       className={cn("flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", className)}
     >
       <Icon className="h-4 w-4" />
     </button>
+    </Tooltip>
   )
 }
 
@@ -176,7 +187,7 @@ export function UserMenu({ compact = false, align = "end" }: { compact?: boolean
       <DropdownMenuTrigger asChild>
         <button className={cn(
           "flex min-w-0 items-center gap-2 rounded-lg transition-colors hover:bg-accent",
-          compact ? "p-1" : "w-full px-2 py-1.5",
+          compact ? "p-1" : "w-full border bg-background/60 px-2 py-1.5 shadow-sm",
         )}>
           <Avatar className="h-7 w-7">
             <AvatarFallback className="bg-primary/15 text-[10px] font-semibold text-primary">
@@ -187,7 +198,7 @@ export function UserMenu({ compact = false, align = "end" }: { compact?: boolean
             <>
               <div className="min-w-0 flex-1 text-left">
                 <p className="truncate text-xs font-medium leading-tight">{user?.name}</p>
-                <p className="truncate text-[10px] capitalize text-muted-foreground">{user?.role}</p>
+                <p className="truncate text-[10px] text-muted-foreground">{user?.email}</p>
               </div>
               <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             </>

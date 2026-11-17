@@ -70,6 +70,7 @@ export default function AttentionPage() {
       <PageHeader
         icon={<Bell className="h-4 w-4" />}
         title="Attention"
+        help="attention"
         description={
           items && items.length > 0
             ? `${items.length} decision${items.length === 1 ? "" : "s"} waiting — approve to move work forward, or send it back with feedback.`

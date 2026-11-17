@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, ChevronRight, Coins, FileImage, FileText, Paperclip, RefreshCw, Trash2, Upload } from "lucide-react"
+import { ChevronDown, ChevronRight, Coins, FileImage, FileText, Paperclip, RefreshCw, Repeat, Trash2, Upload } from "lucide-react"
 import { format, formatDistanceToNow } from "date-fns"
 import { toast } from "sonner"
 import type { ArtifactType, EvidenceArtifact, TaskRun, WorkflowStage } from "@/types"
@@ -12,6 +12,7 @@ import { useHarnesses } from "@/hooks/useHarnesses"
 import { errorDetail, openArtifact } from "@/hooks/useTaskExtras"
 import Markdown from "@/components/Markdown"
 import { Button } from "@/components/ui/button"
+import { GlossaryContent, Tooltip } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { duration, OUTCOME_META } from "./meta"
 
@@ -53,7 +54,13 @@ function RunItem({ run, stageName, defaultOpen, harnessName }: { run: TaskRun; s
         className="flex w-full flex-wrap items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted/50">
         {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
         <span className="font-medium">{stageName}</span>
-        {run.attempt_number > 1 && (
+        {run.loop_iteration ? (
+          <Tooltip content={<GlossaryContent term="loopPass" />}>
+            <span tabIndex={0} className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+              <Repeat className="h-2.5 w-2.5" /> pass {run.loop_iteration}
+            </span>
+          </Tooltip>
+        ) : run.attempt_number > 1 && (
           <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">attempt {run.attempt_number}</span>
         )}
         {running && <span className="rounded-full bg-info/10 px-1.5 py-0.5 text-[10px] font-semibold text-info">running</span>}

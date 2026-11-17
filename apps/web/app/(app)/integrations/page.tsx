@@ -1,523 +1,494 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Trash2, CheckCircle2, AlertCircle, Eye, EyeOff, Loader2, GitBranch, Server, Link2 } from "lucide-react"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import {
-  useGitIntegrations, useCreateGitIntegration, useDeleteGitIntegration, useUpdateGitIntegration,
-  useDeployEnvironments, useCreateDeployEnvironment, useDeleteDeployEnvironment,
-} from "@/hooks/useIntegrations"
-import { cn, formatRelativeTime } from "@/lib/utils"
-import { apiFetch } from "@/lib/api"
+import { AlertTriangle, ArrowUpRight, Eye, EyeOff, Info, Link2, Loader2, Lock, Plug, Plus, Search, ShieldCheck, Unplug } from "lucide-react"
 import { toast } from "sonner"
-import type { GitProvider, DeployProvider, GitIntegration, DeployEnvironment } from "@/types"
+import {
+  useCreateDeployEnvironment, useCreateGitIntegration, useDeleteDeployEnvironment, useDeleteGitIntegration,
+  useDeployEnvironments, useGitIntegrations, useUpdateDeployEnvironment, useUpdateGitIntegration,
+} from "@/hooks/useIntegrations"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown"
+import { Field, Input, Segmented, Switch } from "@/components/ui/form"
+import { Page, PageHeader } from "@/components/ui/page"
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { HelpHint, Tooltip } from "@/components/ui/tooltip"
+import { apiFetch } from "@/lib/api"
+import {
+  CATEGORIES, PROVIDERS, RISK_LABEL, buildItems, filterItems, healthOf,
+  type Capability, type Health, type IntegrationCategory, type IntegrationItem, type ProviderInfo, type Risk,
+} from "@/lib/integrations"
+import { cn, formatRelativeTime } from "@/lib/utils"
+import type { DeployProvider, GitProvider } from "@/types"
 
-// ── Provider metadata ─────────────────────────────────────────────────────────
+type Connected = Exclude<IntegrationItem, { type: "available" }>
 
-const GIT_PROVIDERS: {
-  id: GitProvider; label: string; color: string; badge: string; needsBaseUrl: boolean; placeholder: string
-}[] = [
-  { id: "github",    label: "GitHub",     color: "bg-[#24292e] text-white", badge: "bg-slate-100 text-slate-800", needsBaseUrl: false, placeholder: "ghp_…" },
-  { id: "gitlab",    label: "GitLab",     color: "bg-[#fc6d26] text-white", badge: "bg-orange-100 text-orange-800", needsBaseUrl: false, placeholder: "glpat-…" },
-  { id: "bitbucket", label: "Bitbucket",  color: "bg-[#0052cc] text-white", badge: "bg-blue-100 text-blue-800", needsBaseUrl: false, placeholder: "App password" },
-  { id: "gitea",     label: "Gitea",      color: "bg-[#609926] text-white", badge: "bg-green-100 text-green-800", needsBaseUrl: true,  placeholder: "Access token" },
-]
+// ── Small pieces ─────────────────────────────────────────────────────────────
 
-const DEPLOY_PROVIDERS: {
-  id: DeployProvider; label: string; color: string; badge: string; fields: { key: string; label: string; placeholder: string; secret?: boolean }[]
-}[] = [
-  {
-    id: "aws", label: "AWS", color: "bg-[#ff9900] text-white", badge: "bg-amber-100 text-amber-800",
-    fields: [
-      { key: "access_key_id",     label: "Access Key ID",         placeholder: "AKIA…" },
-      { key: "secret_access_key", label: "Secret Access Key",     placeholder: "wJalr…", secret: true },
-      { key: "account_id",        label: "Account ID (optional)", placeholder: "123456789012" },
-    ],
-  },
-  {
-    id: "gcp", label: "GCP", color: "bg-[#4285f4] text-white", badge: "bg-blue-100 text-blue-800",
-    fields: [
-      { key: "project_id",       label: "Project ID",            placeholder: "my-project-123" },
-      { key: "service_account",  label: "Service Account JSON",  placeholder: '{"type": "service_account", …}', secret: true },
-    ],
-  },
-  {
-    id: "azure", label: "Azure", color: "bg-[#0078d4] text-white", badge: "bg-sky-100 text-sky-800",
-    fields: [
-      { key: "tenant_id",     label: "Tenant ID",     placeholder: "xxxxxxxx-…" },
-      { key: "client_id",     label: "Client ID",     placeholder: "xxxxxxxx-…" },
-      { key: "client_secret", label: "Client Secret", placeholder: "xxxxxxxx~…", secret: true },
-    ],
-  },
-  {
-    id: "custom", label: "BYOS", color: "bg-slate-700 text-white", badge: "bg-slate-100 text-slate-700",
-    fields: [
-      { key: "server_url", label: "Server URL",   placeholder: "https://your-server.com" },
-      { key: "ssh_user",   label: "SSH User",     placeholder: "deploy" },
-      { key: "ssh_key",    label: "SSH Private Key", placeholder: "-----BEGIN OPENSSH PRIVATE KEY-----", secret: true },
-    ],
-  },
-]
+function Logo({ provider, size = "md" }: { provider: ProviderInfo; size?: "sm" | "md" }) {
+  return (
+    <span className={cn(
+      "flex shrink-0 items-center justify-center rounded-lg font-bold",
+      size === "sm" ? "h-7 w-7 text-[9px]" : "h-9 w-9 text-[10px]",
+      provider.color,
+    )}>
+      {provider.monogram}
+    </span>
+  )
+}
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
+const HEALTH: Record<Health, { label: string; className: string; tip: string }> = {
+  connected: { label: "Connected", className: "border-success/30 bg-success/10 text-success", tip: "Active, with a stored credential." },
+  disabled: { label: "Disabled", className: "border-border bg-muted text-muted-foreground", tip: "Kept, but engineers don't receive it while disabled." },
+  incomplete: { label: "Needs credential", className: "border-warning/40 bg-warning/10 text-warning", tip: "Saved without a token or config — add one in Settings." },
+}
 
-function SecretField({ label, value, onChange, placeholder }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder: string
-}) {
+function StatusPill({ health }: { health: Health }) {
+  const h = HEALTH[health]
+  return (
+    <Tooltip content={h.tip}>
+      <span tabIndex={0} className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium", h.className)}>{h.label}</span>
+    </Tooltip>
+  )
+}
+
+const RISK_CLASS: Record<Risk, string> = {
+  low: "border-success/30 bg-success/10 text-success",
+  medium: "border-warning/30 bg-warning/10 text-warning",
+  high: "border-destructive/30 bg-destructive/10 text-destructive",
+  never: "border-border bg-muted text-muted-foreground",
+  stored: "border-border bg-muted text-muted-foreground",
+}
+
+const RISK_TIP: Record<Risk, string> = {
+  low: "Reads only; nothing changes outside Gravel.",
+  medium: "Writes, but to places a person reviews (a branch, a pull request).",
+  high: "Can change live systems. Scope the credential tightly.",
+  never: "Gravel never does this.",
+  stored: "Kept encrypted for your engineers; Gravel's automation doesn't use it yet.",
+}
+
+function CapabilityList({ capabilities }: { capabilities: Capability[] }) {
+  return (
+    <ul className="divide-y overflow-hidden rounded-lg border">
+      {capabilities.map((c) => (
+        <li key={c.key} className="flex items-center gap-3 px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm">{c.label}</p>
+            {c.key !== "stored" && <p className="font-mono text-[10px] text-muted-foreground">{c.key}</p>}
+          </div>
+          {c.note && <span className="hidden text-[11px] text-muted-foreground sm:inline">{c.note}</span>}
+          <Tooltip content={RISK_TIP[c.risk]}>
+            <span tabIndex={0} className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium", RISK_CLASS[c.risk])}>{RISK_LABEL[c.risk]}</span>
+          </Tooltip>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function SecretInput({ value, onChange, placeholder, label }: { value: string; onChange: (v: string) => void; placeholder: string; label: string }) {
   const [show, setShow] = useState(false)
   return (
-    <div className="space-y-1.5">
-      <label className="text-sm font-medium">{label}</label>
-      <div className="relative">
-        <input
-          type={show ? "text" : "password"}
-          className="w-full rounded-lg border bg-background px-3 py-2.5 pr-10 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground placeholder:font-sans"
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          autoComplete="off"
-        />
-        <button type="button" onClick={() => setShow(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ── Connect Git dialog ────────────────────────────────────────────────────────
-
-function ConnectGitDialog({ provider, open, onOpenChange }: {
-  provider: (typeof GIT_PROVIDERS)[0] | null; open: boolean; onOpenChange: (v: boolean) => void
-}) {
-  const [name, setName] = useState("")
-  const [token, setToken] = useState("")
-  const [baseUrl, setBaseUrl] = useState("")
-  const [branch, setBranch] = useState("main")
-  const create = useCreateGitIntegration()
-
-  function reset() { setName(""); setToken(""); setBaseUrl(""); setBranch("main") }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!provider) return
-    try {
-      await create.mutateAsync({
-        provider: provider.id,
-        name: name.trim() || provider.label,
-        access_token: token || undefined,
-        base_url: provider.needsBaseUrl ? baseUrl : undefined,
-        default_branch: branch,
-      })
-      toast.success(`${provider.label} connected`)
-      onOpenChange(false)
-      reset()
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to connect")
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => { if (!create.isPending) { onOpenChange(v); if (!v) reset() } }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <span className={cn("text-xs font-bold px-2 py-1 rounded", provider?.color)}>{provider?.label}</span>
-            Connect repository
-          </DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Display name</label>
-            <input
-              autoFocus
-              className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
-              placeholder={`My ${provider?.label} repos`}
-              value={name} onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          {provider?.needsBaseUrl && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Base URL</label>
-              <input
-                className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="http://gitea.example.com"
-                value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)}
-              />
-            </div>
-          )}
-          <SecretField
-            label="Personal Access Token"
-            value={token} onChange={setToken}
-            placeholder={provider?.placeholder ?? ""}
-          />
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Default branch</label>
-            <input
-              className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="main"
-              value={branch} onChange={(e) => setBranch(e.target.value)}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2.5">
-            Your token is encrypted at rest using Fernet symmetric encryption. It is never exposed in the UI or logs.
-          </p>
-          <div className="flex gap-2 pt-1">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => { onOpenChange(false); reset() }}>Cancel</Button>
-            <Button type="submit" className="flex-1" disabled={create.isPending}>
-              {create.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Connecting…</> : "Connect"}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ── Add Deploy dialog ─────────────────────────────────────────────────────────
-
-function AddDeployDialog({ provider, open, onOpenChange }: {
-  provider: (typeof DEPLOY_PROVIDERS)[0] | null; open: boolean; onOpenChange: (v: boolean) => void
-}) {
-  const [name, setName] = useState("")
-  const [region, setRegion] = useState("")
-  const [fields, setFields] = useState<Record<string, string>>({})
-  const create = useCreateDeployEnvironment()
-
-  function reset() { setName(""); setRegion(""); setFields({}) }
-  function setField(key: string, val: string) { setFields(f => ({ ...f, [key]: val })) }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!provider) return
-    try {
-      await create.mutateAsync({
-        provider: provider.id,
-        name: name.trim() || "production",
-        region: region || undefined,
-        config: Object.keys(fields).length > 0 ? fields : undefined,
-      })
-      toast.success(`${provider.label} environment added`)
-      onOpenChange(false)
-      reset()
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to add environment")
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => { if (!create.isPending) { onOpenChange(v); if (!v) reset() } }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <span className={cn("text-xs font-bold px-2 py-1 rounded", provider?.color)}>{provider?.label}</span>
-            Add environment
-          </DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Environment name</label>
-            <input
-              autoFocus required
-              className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
-              placeholder="production"
-              value={name} onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          {provider?.id !== "custom" && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Region</label>
-              <input
-                className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
-                placeholder={provider?.id === "aws" ? "us-east-1" : provider?.id === "gcp" ? "us-central1" : "eastus"}
-                value={region} onChange={(e) => setRegion(e.target.value)}
-              />
-            </div>
-          )}
-          {provider?.fields.map((f) => (
-            f.secret
-              ? <SecretField key={f.key} label={f.label} value={fields[f.key] ?? ""} onChange={(v) => setField(f.key, v)} placeholder={f.placeholder} />
-              : (
-                <div key={f.key} className="space-y-1.5">
-                  <label className="text-sm font-medium">{f.label}</label>
-                  <input
-                    className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
-                    placeholder={f.placeholder}
-                    value={fields[f.key] ?? ""} onChange={(e) => setField(f.key, e.target.value)}
-                  />
-                </div>
-              )
-          ))}
-          <p className="text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2.5">
-            Credentials are encrypted at rest. Gravel never sends them to third-party services.
-          </p>
-          <div className="flex gap-2 pt-1">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => { onOpenChange(false); reset() }}>Cancel</Button>
-            <Button type="submit" className="flex-1" disabled={create.isPending || !name.trim()}>
-              {create.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Adding…</> : "Add environment"}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ── Source control tab ────────────────────────────────────────────────────────
-
-function GitIntegrationRow({ row }: { row: GitIntegration }) {
-  const del = useDeleteGitIntegration()
-  const update = useUpdateGitIntegration()
-  const meta = GIT_PROVIDERS.find(p => p.id === row.provider)
-  const [testing, setTesting] = useState(false)
-
-  async function handleDelete() {
-    if (!confirm(`Remove "${row.name}"?`)) return
-    try { await del.mutateAsync(row.id); toast.success("Integration removed") }
-    catch { toast.error("Failed to remove") }
-  }
-
-  async function handleTest() {
-    let target = row.base_url
-    if (!target) {
-      target = prompt("Repo URL to test against (e.g. https://github.com/owner/repo):") ?? ""
-      if (!target) return
-    }
-    setTesting(true)
-    try {
-      const res = await apiFetch<{ ok: boolean; full_name?: string; error?: string }>(
-        `/api/integrations/git/${row.id}/verify?repo_url=${encodeURIComponent(target)}`
-      )
-      if (res.ok) toast.success(`Connected: ${res.full_name}`)
-      else toast.error(`Connection failed: ${res.error?.slice(0, 120)}`)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Connection test failed")
-    } finally {
-      setTesting(false)
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-4 px-5 py-4 hover:bg-muted/30 transition-colors group border-b last:border-b-0">
-      <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0", meta?.color)}>
-        {row.provider.slice(0, 2).toUpperCase()}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold">{row.name}</p>
-          <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded", meta?.badge)}>{meta?.label}</span>
-          {row.is_active
-            ? <span className="text-[10px] text-emerald-600 flex items-center gap-0.5"><CheckCircle2 className="w-3 h-3" /> Active</span>
-            : <span className="text-[10px] text-muted-foreground flex items-center gap-0.5"><AlertCircle className="w-3 h-3" /> Inactive</span>}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Branch: {row.default_branch}
-          {row.base_url && <> · {row.base_url}</>}
-          {!row.has_token && <span className="text-amber-500 ml-2">⚠ No token</span>}
-        </p>
-      </div>
-      <span className="text-xs text-muted-foreground hidden sm:block shrink-0">{formatRelativeTime(row.created_at)}</span>
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {row.has_token && (
-          <button
-            onClick={handleTest}
-            disabled={testing}
-            className="p-1.5 rounded-lg hover:bg-muted text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-            title="Test connection"
-          >
-            {testing ? "Testing…" : "Test"}
-          </button>
-        )}
-        <button
-          onClick={() => update.mutate({ id: row.id, is_active: !row.is_active })}
-          className="p-1.5 rounded-lg hover:bg-muted text-xs text-muted-foreground hover:text-foreground"
-          title={row.is_active ? "Disable" : "Enable"}
-        >
-          {row.is_active ? "Disable" : "Enable"}
-        </button>
-        <button onClick={handleDelete} className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function SourceControlTab() {
-  const { data: integrations = [], isLoading } = useGitIntegrations()
-  const [connectProvider, setConnectProvider] = useState<(typeof GIT_PROVIDERS)[0] | null>(null)
-
-  return (
-    <div className="space-y-6">
-      {/* Provider cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {GIT_PROVIDERS.map((p) => {
-          const count = integrations.filter(i => i.provider === p.id).length
-          return (
-            <button
-              key={p.id}
-              onClick={() => setConnectProvider(p)}
-              className="rounded-2xl border bg-card p-4 text-left hover:shadow-md hover:border-primary/40 transition-all group"
-            >
-              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold mb-3", p.color)}>
-                {p.label.slice(0, 2)}
-              </div>
-              <p className="text-sm font-semibold">{p.label}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {count > 0 ? `${count} connected` : "Not connected"}
-              </p>
-              <div className="mt-3 flex items-center gap-1 text-xs text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                <Plus className="w-3 h-3" /> Connect
-              </div>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Connected list */}
-      <div className="rounded-2xl border bg-card overflow-hidden">
-        <div className="px-5 py-3.5 border-b bg-muted/30 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <GitBranch className="w-4 h-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold">Connected repositories</h3>
-          </div>
-          <span className="text-xs text-muted-foreground">{integrations.length} total</span>
-        </div>
-        {isLoading ? (
-          Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="h-16 border-b last:border-b-0 px-5 flex items-center gap-4">
-              <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
-              <div className="flex-1 space-y-1.5">
-                <div className="h-3 rounded bg-muted animate-pulse w-36" />
-                <div className="h-2.5 rounded bg-muted animate-pulse w-52" />
-              </div>
-            </div>
-          ))
-        ) : integrations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
-            <Link2 className="w-7 h-7 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No integrations yet — click a provider above to connect</p>
-          </div>
-        ) : (
-          integrations.map(row => <GitIntegrationRow key={row.id} row={row} />)
-        )}
-      </div>
-
-      <ConnectGitDialog
-        provider={connectProvider}
-        open={!!connectProvider}
-        onOpenChange={(v) => { if (!v) setConnectProvider(null) }}
-      />
-    </div>
-  )
-}
-
-// ── Deploy environments tab ────────────────────────────────────────────────────
-
-function DeployEnvRow({ row }: { row: DeployEnvironment }) {
-  const del = useDeleteDeployEnvironment()
-  const meta = DEPLOY_PROVIDERS.find(p => p.id === row.provider)
-
-  async function handleDelete() {
-    if (!confirm(`Remove "${row.name}" environment?`)) return
-    try { await del.mutateAsync(row.id); toast.success("Environment removed") }
-    catch { toast.error("Failed to remove") }
-  }
-
-  return (
-    <div className="flex items-center gap-4 px-5 py-4 hover:bg-muted/30 transition-colors group border-b last:border-b-0">
-      <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0", meta?.color)}>
-        {row.provider === "custom" ? "⚙" : row.provider.slice(0, 3).toUpperCase()}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold">{row.name}</p>
-          <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded", meta?.badge)}>{meta?.label}</span>
-          {row.is_active
-            ? <span className="text-[10px] text-emerald-600 flex items-center gap-0.5"><CheckCircle2 className="w-3 h-3" /> Active</span>
-            : <span className="text-[10px] text-muted-foreground flex items-center gap-0.5"><AlertCircle className="w-3 h-3" /> Inactive</span>}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {row.region && <>Region: {row.region} · </>}
-          {row.has_config ? "Credentials stored" : <span className="text-amber-500">No credentials</span>}
-          {row.project_id && <> · Project-scoped</>}
-        </p>
-      </div>
-      <span className="text-xs text-muted-foreground hidden sm:block shrink-0">{formatRelativeTime(row.created_at)}</span>
-      <button onClick={handleDelete} className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
-        <Trash2 className="w-3.5 h-3.5" />
+    <div className="relative">
+      <Input type={show ? "text" : "password"} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+        autoComplete="off" aria-label={label} className="pr-9 font-mono" />
+      <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? "Hide" : "Show"}
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
       </button>
     </div>
   )
 }
 
-function DeployTab() {
-  const { data: envs = [], isLoading } = useDeployEnvironments()
-  const [addProvider, setAddProvider] = useState<(typeof DEPLOY_PROVIDERS)[0] | null>(null)
+// ── Connect dialog ───────────────────────────────────────────────────────────
+
+function ConnectDialog({ provider, onClose }: { provider: ProviderInfo | null; onClose: () => void }) {
+  const createGit = useCreateGitIntegration()
+  const createDeploy = useCreateDeployEnvironment()
+  const [name, setName] = useState("")
+  const [token, setToken] = useState("")
+  const [baseUrl, setBaseUrl] = useState("")
+  const [branch, setBranch] = useState("main")
+  const [region, setRegion] = useState("")
+  const [fields, setFields] = useState<Record<string, string>>({})
+  const pending = createGit.isPending || createDeploy.isPending
+
+  function close() {
+    if (pending) return
+    setName(""); setToken(""); setBaseUrl(""); setBranch("main"); setRegion(""); setFields({})
+    onClose()
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!provider) return
+    try {
+      if (provider.kind === "git") {
+        await createGit.mutateAsync({
+          provider: provider.id as GitProvider, name: name.trim() || provider.label, access_token: token || undefined,
+          base_url: provider.needsBaseUrl ? baseUrl : undefined, default_branch: branch || "main",
+        })
+      } else {
+        const config = Object.fromEntries(Object.entries(fields).filter(([, v]) => v.trim()))
+        await createDeploy.mutateAsync({
+          provider: provider.id as DeployProvider, name: name.trim() || "production", region: region || undefined,
+          config: Object.keys(config).length ? config : undefined,
+        })
+      }
+      toast.success(`${provider.label} connected`)
+      close()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to connect")
+    }
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Provider cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {DEPLOY_PROVIDERS.map((p) => {
-          const count = envs.filter(e => e.provider === p.id).length
-          return (
-            <button
-              key={p.id}
-              onClick={() => setAddProvider(p)}
-              className="rounded-2xl border bg-card p-4 text-left hover:shadow-md hover:border-primary/40 transition-all group"
-            >
-              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold mb-3", p.color)}>
-                {p.id === "custom" ? "⚙" : p.label.slice(0, 3)}
-              </div>
-              <p className="text-sm font-semibold">{p.label}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {count > 0 ? `${count} environment${count > 1 ? "s" : ""}` : "Not configured"}
-              </p>
-              <div className="mt-3 flex items-center gap-1 text-xs text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                <Plus className="w-3 h-3" /> Add environment
-              </div>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Environments list */}
-      <div className="rounded-2xl border bg-card overflow-hidden">
-        <div className="px-5 py-3.5 border-b bg-muted/30 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Server className="w-4 h-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold">Deploy environments</h3>
-          </div>
-          <span className="text-xs text-muted-foreground">{envs.length} total</span>
-        </div>
-        {isLoading ? (
-          Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="h-16 border-b last:border-b-0 px-5 flex items-center gap-4">
-              <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
-              <div className="flex-1 space-y-1.5">
-                <div className="h-3 rounded bg-muted animate-pulse w-32" />
-                <div className="h-2.5 rounded bg-muted animate-pulse w-48" />
-              </div>
+    <Dialog open={!!provider} onOpenChange={(v) => { if (!v) close() }}>
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        {provider && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Connect {provider.label}</DialogTitle>
+              <DialogDescription>
+                Gravel keeps the credential encrypted at rest and never shows it again. {provider.active
+                  ? "Only engineers that need it receive it, inside their runtime."
+                  : "Gravel's automation doesn't use it yet; it's kept for your engineers."}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex items-center gap-2" aria-hidden>
+              <Logo provider={provider} size="sm" />
+              <ArrowUpRight className="h-3.5 w-3.5 rotate-45 text-muted-foreground" />
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary"><ShieldCheck className="h-4 w-4" /></span>
             </div>
-          ))
-        ) : envs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
-            <Server className="w-7 h-7 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No environments yet — click a provider above to add one</p>
-          </div>
-        ) : (
-          envs.map(row => <DeployEnvRow key={row.id} row={row} />)
+            <form onSubmit={submit} className="space-y-3">
+              <Field label={provider.kind === "git" ? "Display name" : "Environment name"}>
+                <Input autoFocus value={name} onChange={(e) => setName(e.target.value)}
+                  placeholder={provider.kind === "git" ? `${provider.label} — my org` : "production"} />
+              </Field>
+              {provider.kind === "git" ? (
+                <>
+                  {provider.needsBaseUrl && (
+                    <Field label="Base URL"><Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://git.example.com" /></Field>
+                  )}
+                  <Field label="Personal access token" hint="Grant repository read/write and pull requests; nothing more is needed.">
+                    <SecretInput label="Personal access token" value={token} onChange={setToken} placeholder={provider.tokenPlaceholder ?? ""} />
+                  </Field>
+                  <Field label="Default branch"><Input value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="main" /></Field>
+                </>
+              ) : (
+                <>
+                  {provider.id !== "custom" && (
+                    <Field label="Region"><Input value={region} onChange={(e) => setRegion(e.target.value)}
+                      placeholder={provider.id === "aws" ? "us-east-1" : provider.id === "gcp" ? "us-central1" : "eastus"} /></Field>
+                  )}
+                  {provider.fields?.map((f) => (
+                    <Field key={f.key} label={f.label}>
+                      {f.secret
+                        ? <SecretInput label={f.label} value={fields[f.key] ?? ""} onChange={(v) => setFields((x) => ({ ...x, [f.key]: v }))} placeholder={f.placeholder} />
+                        : <Input value={fields[f.key] ?? ""} onChange={(e) => setFields((x) => ({ ...x, [f.key]: e.target.value }))} placeholder={f.placeholder} />}
+                    </Field>
+                  ))}
+                </>
+              )}
+              <div>
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">What engineers may do</p>
+                <CapabilityList capabilities={provider.capabilities} />
+              </div>
+              <p className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Disconnecting later deletes the stored credential at once.
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={close}>Cancel</Button>
+                <Button type="submit" size="sm" disabled={pending}>
+                  {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />} Connect {provider.label}
+                </Button>
+              </div>
+            </form>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Disconnect dialog ────────────────────────────────────────────────────────
+
+function DisconnectDialog({ item, onClose, onDone }: { item: Connected | null; onClose: () => void; onDone: () => void }) {
+  const delGit = useDeleteGitIntegration()
+  const delDeploy = useDeleteDeployEnvironment()
+  const [typed, setTyped] = useState("")
+  const pending = delGit.isPending || delDeploy.isPending
+  if (!item) return null
+  const label = item.provider.label
+  const impact = item.type === "git"
+    ? (item.provider.id === "github"
+      ? ["Engineers launched from now on won't get GitHub access (running containers keep it until restarted).",
+        "Importing GitHub issues as tasks stops unless another GitHub connection is active.",
+        "The stored token is deleted. Revoke it in GitHub too if it was shared."]
+      : ["The stored token is deleted."])
+    : (item.provider.id === "aws"
+      ? ["Engineers launched from now on won't get these AWS credentials.", "Deploys through this environment stop.", "The stored credentials are deleted."]
+      : ["The stored credentials are deleted."])
+
+  async function confirm() {
+    if (!item) return
+    try {
+      if (item.type === "git") await delGit.mutateAsync(item.row.id)
+      else await delDeploy.mutateAsync(item.row.id)
+      toast.success(`${item.row.name} disconnected`)
+      setTyped("")
+      onDone()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to disconnect")
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v && !pending) { setTyped(""); onClose() } }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10 text-destructive"><Unplug className="h-4 w-4" /></span>
+            Disconnect {item.row.name}?
+          </DialogTitle>
+          <DialogDescription>Gravel deletes this {label} connection right away.</DialogDescription>
+        </DialogHeader>
+        <div className="rounded-lg border bg-muted/40 p-3">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Impact</p>
+          <ul className="space-y-1.5 text-sm">
+            {impact.map((t) => <li key={t} className="flex gap-2"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" /> {t}</li>)}
+          </ul>
+        </div>
+        <Field label={`Type ${item.row.name} to confirm`}>
+          <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus aria-label="Confirm the connection name" />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => { setTyped(""); onClose() }} disabled={pending}>Keep connected</Button>
+          <Button variant="destructive" size="sm" onClick={confirm} disabled={pending || typed.trim() !== item.row.name}>
+            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unplug className="h-3.5 w-3.5" />} Disconnect
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Detail drawer ────────────────────────────────────────────────────────────
+
+function Stat({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
+  return (
+    <div className="rounded-lg border bg-muted/30 px-3 py-2">
+      <p className="flex items-center gap-1 text-[11px] text-muted-foreground">{label}{hint && <HelpHint content={hint} label={label} />}</p>
+      <p className="mt-0.5 truncate text-sm font-semibold">{value}</p>
+    </div>
+  )
+}
+
+function TestConnection({ item }: { item: Extract<IntegrationItem, { type: "git" }> }) {
+  const [url, setUrl] = useState(item.row.base_url ?? "")
+  const [state, setState] = useState<{ ok: boolean; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  async function run() {
+    if (!url.trim()) return
+    setBusy(true)
+    try {
+      const res = await apiFetch<{ ok: boolean; full_name?: string; error?: string }>(
+        `/api/integrations/git/${item.row.id}/verify?repo_url=${encodeURIComponent(url.trim())}`)
+      setState(res.ok ? { ok: true, text: `Reached ${res.full_name}` } : { ok: false, text: res.error?.slice(0, 160) ?? "Failed" })
+    } catch (e) {
+      setState({ ok: false, text: e instanceof Error ? e.message : "Connection test failed" })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="space-y-2">
+      <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Test access <HelpHint content="Checks that the token can read this repository. Nothing is written." label="Test access" />
+      </p>
+      <div className="flex gap-2">
+        <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/owner/repo" className="flex-1" aria-label="Repository URL to test" />
+        <Button size="sm" variant="outline" className="h-9" onClick={run} disabled={busy || !url.trim() || !item.row.has_token}>
+          {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Test
+        </Button>
+      </div>
+      {state && <p className={cn("text-xs", state.ok ? "text-success" : "text-destructive")}>{state.text}</p>}
+    </div>
+  )
+}
+
+function DetailSheet({ item, onClose, onDisconnect }: { item: Connected | null; onClose: () => void; onDisconnect: (i: Connected) => void }) {
+  const updateGit = useUpdateGitIntegration()
+  const updateDeploy = useUpdateDeployEnvironment()
+  const [name, setName] = useState("")
+  const [secret, setSecret] = useState("")
+  const [branchOrRegion, setBranchOrRegion] = useState("")
+  const [lastKey, setLastKey] = useState<string | null>(null)
+  if (item && item.key !== lastKey) {
+    setLastKey(item.key)
+    setName(item.row.name)
+    setSecret("")
+    setBranchOrRegion(item.type === "git" ? item.row.default_branch : item.row.region ?? "")
+  }
+  const pending = updateGit.isPending || updateDeploy.isPending
+
+  async function save() {
+    if (!item) return
+    try {
+      if (item.type === "git") {
+        await updateGit.mutateAsync({ id: item.row.id, name: name.trim() || item.row.name, ...(secret ? { access_token: secret } : {}),
+          ...(branchOrRegion.trim() && branchOrRegion !== item.row.default_branch ? { default_branch: branchOrRegion.trim() } : {}) })
+      } else {
+        await updateDeploy.mutateAsync({ id: item.row.id, name: name.trim() || item.row.name, region: branchOrRegion.trim() || undefined })
+      }
+      setSecret("")
+      toast.success("Changes saved")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save")
+    }
+  }
+
+  async function toggle(active: boolean) {
+    if (!item) return
+    try {
+      if (item.type === "git") await updateGit.mutateAsync({ id: item.row.id, is_active: active })
+      else await updateDeploy.mutateAsync({ id: item.row.id, is_active: active })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update")
+    }
+  }
+
+  return (
+    <Sheet open={!!item} onOpenChange={(v) => { if (!v) onClose() }}>
+      <SheetContent>
+        {item && (
+          <>
+            <div className="flex items-start gap-3 border-b px-5 py-4 pr-12">
+              <Logo provider={item.provider} />
+              <div className="min-w-0 flex-1">
+                <SheetTitle className="truncate text-base font-semibold">{item.row.name}</SheetTitle>
+                <SheetDescription className="text-xs text-muted-foreground">
+                  {item.provider.label} · connected {formatRelativeTime(item.row.created_at)}
+                </SheetDescription>
+              </div>
+              <StatusPill health={healthOf(item)!} />
+            </div>
+
+            <Tabs defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
+              <TabsList className="mx-5 mt-3 grid h-9 grid-cols-3">
+                <TabsTrigger value="overview" className="text-xs">Overview</TabsTrigger>
+                <TabsTrigger value="access" className="gap-1 text-xs">
+                  Access <span className="rounded-full bg-muted-foreground/15 px-1.5 text-[10px]">{item.provider.capabilities.length}</span>
+                </TabsTrigger>
+                <TabsTrigger value="settings" className="text-xs">Settings</TabsTrigger>
+              </TabsList>
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+                <TabsContent value="overview" className="mt-4 space-y-4">
+                  <div className="grid grid-cols-3 gap-2">
+                    <Stat label="Status" value={HEALTH[healthOf(item)!].label} />
+                    {item.type === "git"
+                      ? <Stat label="Default branch" value={item.row.default_branch} hint="Engineers branch from and open pull requests against this branch." />
+                      : <Stat label="Region" value={item.row.region ?? "—"} />}
+                    <Stat label="Credential" value={(item.type === "git" ? item.row.has_token : item.row.has_config) ? "Stored" : "Missing"}
+                      hint="Encrypted at rest. The UI never shows it again; replace it in Settings." />
+                  </div>
+                  <div>
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">What Gravel does with it</p>
+                    <p className="text-sm text-muted-foreground">{item.provider.usage}</p>
+                  </div>
+                  {item.type === "git" && item.provider.id === "github" && <TestConnection item={item} />}
+                </TabsContent>
+
+                <TabsContent value="access" className="mt-4 space-y-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">What engineers may do</p>
+                  <CapabilityList capabilities={item.provider.capabilities} />
+                  <p className="flex items-start gap-2 text-xs text-muted-foreground">
+                    <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    Gravel uses the credential only for the actions above. What the provider itself allows depends on the token’s
+                    own scopes — grant the least it needs.
+                  </p>
+                </TabsContent>
+
+                <TabsContent value="settings" className="mt-4 space-y-4">
+                  <div className="flex items-start justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-medium">Active</p>
+                      <p className="text-[11px] text-muted-foreground">Off keeps it stored, but engineers launched while it’s off don’t receive it.</p>
+                    </div>
+                    <Switch checked={item.row.is_active} onChange={toggle} label="Active" className="mt-0.5" />
+                  </div>
+                  <Field label="Display name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+                  <Field label={item.type === "git" ? "Default branch" : "Region"}>
+                    <Input value={branchOrRegion} onChange={(e) => setBranchOrRegion(e.target.value)} />
+                  </Field>
+                  {item.type === "git" && (
+                    <Field label="Replace token" hint="Leave empty to keep the current one.">
+                      <SecretInput label="New token" value={secret} onChange={setSecret} placeholder={item.provider.tokenPlaceholder ?? "New token"} />
+                    </Field>
+                  )}
+                </TabsContent>
+              </div>
+            </Tabs>
+
+            <div className="flex items-center gap-2 border-t px-5 py-3">
+              <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => onDisconnect(item)}>
+                <Unplug className="h-3.5 w-3.5" /> Disconnect
+              </Button>
+              <div className="flex-1" />
+              <Button size="sm" onClick={save} disabled={pending}>
+                {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Save changes
+              </Button>
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+// ── Cards ────────────────────────────────────────────────────────────────────
+
+function IntegrationCard({ item, onManage, onConnect }: { item: IntegrationItem; onManage: (i: Connected) => void; onConnect: (p: ProviderInfo) => void }) {
+  const health = healthOf(item)
+  const p = item.provider
+  return (
+    <div className="surface flex flex-col p-4 transition-shadow hover:shadow-md">
+      <div className="flex items-start gap-3">
+        <Logo provider={p} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold">{item.type === "available" ? p.label : item.row.name}</p>
+          <p className="text-xs text-muted-foreground">{item.type === "available" ? p.category : `${p.label} · ${p.category}`}</p>
+        </div>
+        {health ? <StatusPill health={health} /> : (
+          !p.active && (
+            <Tooltip content={RISK_TIP.stored}>
+              <span tabIndex={0} className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">Storage only</span>
+            </Tooltip>
+          )
         )}
       </div>
-
-      <AddDeployDialog
-        provider={addProvider}
-        open={!!addProvider}
-        onOpenChange={(v) => { if (!v) setAddProvider(null) }}
-      />
+      <p className="mt-3 line-clamp-2 flex-1 text-xs text-muted-foreground">{p.blurb}</p>
+      <div className="mt-3 flex items-center justify-between border-t pt-2.5 text-xs">
+        {item.type === "available" ? (
+          <>
+            <span className="text-muted-foreground">{p.active ? "Used by Gravel’s engineers" : "Kept for your engineers"}</span>
+            <Button size="sm" variant="outline" className="h-7" onClick={() => onConnect(p)}><Link2 className="h-3 w-3" /> Connect</Button>
+          </>
+        ) : (
+          <>
+            <span className="truncate text-muted-foreground">
+              {item.type === "git" ? `branch ${item.row.default_branch}` : item.row.region ? `region ${item.row.region}` : "no region"}
+              {" · "}added {formatRelativeTime(item.row.created_at)}
+            </span>
+            <button onClick={() => onManage(item)} className="inline-flex shrink-0 items-center gap-0.5 font-medium hover:text-primary">
+              Manage <ArrowUpRight className="h-3 w-3" />
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -525,27 +496,110 @@ function DeployTab() {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function IntegrationsPage() {
-  return (
-    <div className="h-full overflow-y-auto no-scrollbar">
-      <div className="max-w-4xl mx-auto p-6 space-y-6">
-        <div>
-          <h1 className="text-xl font-bold">Integrations</h1>
-          <p className="text-sm text-muted-foreground">Connect source control providers and configure deployment environments. Actual sync and deploy actions come in a future release.</p>
-        </div>
+  const { data: git, isLoading: gitLoading } = useGitIntegrations()
+  const { data: deploy, isLoading: deployLoading } = useDeployEnvironments()
+  const [status, setStatus] = useState<"all" | "connected" | "available">("all")
+  const [category, setCategory] = useState<IntegrationCategory | "all">("all")
+  const [query, setQuery] = useState("")
+  const [connecting, setConnecting] = useState<ProviderInfo | null>(null)
+  const [managing, setManaging] = useState<string | null>(null)
+  const [disconnecting, setDisconnecting] = useState<Connected | null>(null)
 
-        <Tabs defaultValue="git">
-          <TabsList className="mb-6">
-            <TabsTrigger value="git" className="flex items-center gap-1.5">
-              <GitBranch className="w-3.5 h-3.5" /> Source Control
-            </TabsTrigger>
-            <TabsTrigger value="deploy" className="flex items-center gap-1.5">
-              <Server className="w-3.5 h-3.5" /> Deploy Environments
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="git"><SourceControlTab /></TabsContent>
-          <TabsContent value="deploy"><DeployTab /></TabsContent>
-        </Tabs>
+  const items = buildItems(git ?? [], deploy ?? [])
+  const connectedCount = items.filter((i) => i.type !== "available").length
+  const shown = filterItems(items, { status, category, query })
+  const managed = items.find((i) => i.key === managing) as Connected | undefined
+  const loading = gitLoading || deployLoading
+
+  return (
+    <Page>
+      <PageHeader
+        icon={<Plug className="h-4 w-4" />}
+        title="Integrations"
+        help="integration"
+        description="Connect the services your engineers work with, and see exactly what they may do with each."
+        actions={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm"><Plus className="h-3.5 w-3.5" /> Connect</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {CATEGORIES.map((c, i) => (
+                <div key={c}>
+                  {i > 0 && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel>{c}</DropdownMenuLabel>
+                  {PROVIDERS.filter((p) => p.category === c).map((p) => (
+                    <DropdownMenuItem key={p.id} onClick={() => setConnecting(p)}>
+                      <Logo provider={p} size="sm" /> {p.label}
+                    </DropdownMenuItem>
+                  ))}
+                </div>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
+
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="no-scrollbar flex gap-1.5 overflow-x-auto">
+          {(["all", ...CATEGORIES] as const).map((c) => (
+            <button key={c} onClick={() => setCategory(c)}
+              className={cn("shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                category === c ? "border-foreground bg-foreground text-background" : "bg-background text-muted-foreground hover:text-foreground")}>
+              {c === "all" ? "All categories" : c}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Segmented
+            size="sm"
+            value={status}
+            onChange={setStatus}
+            options={[
+              { value: "all", label: <>All <span className="text-muted-foreground">{items.length}</span></> },
+              { value: "connected", label: <>Connected <span className="text-muted-foreground">{connectedCount}</span></> },
+              { value: "available", label: <>Available <span className="text-muted-foreground">{items.length - connectedCount}</span></> },
+            ]}
+          />
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search integrations" aria-label="Search integrations" className="h-8 pl-8 text-xs sm:w-52" />
+          </div>
+        </div>
       </div>
-    </div>
+
+      {loading ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => <div key={i} className="surface h-40 animate-pulse bg-muted/40" />)}
+        </div>
+      ) : shown.length ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {shown.map((item) => (
+            <IntegrationCard key={item.key} item={item} onManage={(i) => setManaging(i.key)} onConnect={setConnecting} />
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-xl border border-dashed py-12 text-center text-sm text-muted-foreground">Nothing matches — clear the search or pick another filter.</p>
+      )}
+
+      <div className="surface mt-6 flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted"><Lock className="h-4 w-4" /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">How credentials are handled</p>
+          <p className="text-xs text-muted-foreground">
+            Encrypted at rest and never shown again. Docker engineers receive an active GitHub token and AWS keys as environment
+            variables when they launch; local runners use your own machine’s credentials instead.
+          </p>
+        </div>
+        <a href="https://github.com/portfolio-ltd/gravel/blob/main/docs/self-hosting.md" target="_blank" rel="noreferrer"
+          className="inline-flex shrink-0 items-center gap-1 text-xs font-medium hover:text-primary">
+          Read the docs <ArrowUpRight className="h-3 w-3" />
+        </a>
+      </div>
+
+      <ConnectDialog provider={connecting} onClose={() => setConnecting(null)} />
+      <DetailSheet item={managed ?? null} onClose={() => setManaging(null)} onDisconnect={(i) => setDisconnecting(i)} />
+      <DisconnectDialog item={disconnecting} onClose={() => setDisconnecting(null)} onDone={() => { setDisconnecting(null); setManaging(null) }} />
+    </Page>
   )
 }

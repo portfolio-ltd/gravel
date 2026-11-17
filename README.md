@@ -77,7 +77,9 @@ Workflows are fully editable. Three templates ship built in:
 
 See [docs/methodology.md](docs/methodology.md) for the full method,
 [docs/knowledge-map.md](docs/knowledge-map.md) for wikilinks, the map and the
-Obsidian export, and [docs/harnesses.md](docs/harnesses.md) for agent harnesses.
+Obsidian export, [docs/harnesses.md](docs/harnesses.md) for agent harnesses, and
+[docs/loops.md](docs/loops.md) for loop engineering: bounded work → check →
+repeat cycles with exit conditions, pass limits and budgets.
 
 ### Graph engineering
 

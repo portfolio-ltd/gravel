@@ -96,6 +96,7 @@ are ignored.
 .gravel/
   TASK.md                 title, requirements, acceptance criteria, source issue
   STAGE_INSTRUCTIONS.md   stage name, role, instructions (+ grounding guidance)
+  LOOP.md                 only inside a workflow loop: the pass, the exit condition, this run's part
   COMMENTS.md             the task's comment thread
   PROJECT_CONTEXT.md      repo, branches, resolved model, engineer skills
   KNOWLEDGE.md            accepted decisions, patterns, glossary, runbooks, conventions,

@@ -7,10 +7,12 @@ from db.base import new_uuid
 from models.engineer import Engineer
 from models.project import Project
 from models.task import Task, TaskStatus
-from models.workflow import Workflow, WorkflowStage
+from models.workflow import Workflow, WorkflowLoop, WorkflowStage
 from schemas.workflow import (
     StageReorderItem,
     WorkflowCreate,
+    WorkflowLoopCreate,
+    WorkflowLoopUpdate,
     WorkflowStageCreate,
     WorkflowStageUpdate,
     WorkflowUpdate,
@@ -20,7 +22,7 @@ from schemas.workflow import (
 async def list_workflows(db: AsyncSession, organization_id: str) -> list[Workflow]:
     result = await db.execute(
         select(Workflow)
-        .options(selectinload(Workflow.stages))
+        .options(selectinload(Workflow.stages), selectinload(Workflow.loops))
         .where(Workflow.organization_id == organization_id)
         .order_by(Workflow.created_at.desc())
     )
@@ -28,7 +30,7 @@ async def list_workflows(db: AsyncSession, organization_id: str) -> list[Workflo
 
 
 async def get_workflow(db: AsyncSession, workflow_id: str, organization_id: str | None = None) -> Workflow | None:
-    q = select(Workflow).options(selectinload(Workflow.stages)).where(Workflow.id == workflow_id)
+    q = select(Workflow).options(selectinload(Workflow.stages), selectinload(Workflow.loops)).where(Workflow.id == workflow_id)
     if organization_id:
         q = q.where(Workflow.organization_id == organization_id)
     return (await db.execute(q)).scalar_one_or_none()
@@ -64,7 +66,7 @@ async def create_workflow(db: AsyncSession, owner_id: str, data: WorkflowCreate,
             next_stage_id=None,
         ))
     await db.flush()
-    await db.refresh(wf, ["stages"])
+    await db.refresh(wf, ["stages", "loops"])
     return wf
 
 
@@ -169,6 +171,13 @@ async def delete_stage(db: AsyncSession, stage: WorkflowStage) -> None:
             (WorkflowStage.rework_target_stage_id == stage.id) | (WorkflowStage.next_stage_id == stage.id)
         )
     )).scalars().all()
+    loops = (await db.execute(
+        select(WorkflowLoop).where(
+            (WorkflowLoop.entry_stage_id == stage.id) | (WorkflowLoop.check_stage_id == stage.id)
+        )
+    )).scalars().all()
+    for loop in loops:  # a loop without both ends means nothing
+        await db.delete(loop)
     for s in siblings:
         if s.rework_target_stage_id == stage.id:
             s.rework_target_stage_id = None
@@ -186,8 +195,65 @@ async def reorder_stages(db: AsyncSession, wf: Workflow, items: list[StageReorde
     for item in items:
         stage_by_id[item.id].stage_order = item.stage_order
     await db.flush()
-    await db.refresh(wf, ["stages"])
+    await db.refresh(wf, ["stages", "loops"])
     return wf
+
+
+# ── Loops ─────────────────────────────────────────────────────────────────────
+
+async def add_loop(db: AsyncSession, wf: Workflow, data: WorkflowLoopCreate) -> WorkflowLoop:
+    await _validate_loop(db, wf, data.entry_stage_id, data.check_stage_id, loop_id=None)
+    loop = WorkflowLoop(
+        id=new_uuid(), workflow_id=wf.id, name=data.name.strip(), goal=_clean_text(data.goal),
+        entry_stage_id=data.entry_stage_id, check_stage_id=data.check_stage_id,
+        max_iterations=data.max_iterations, max_cost_usd=data.max_cost_usd,
+        on_exhausted=data.on_exhausted, carry_feedback=data.carry_feedback,
+    )
+    db.add(loop)
+    await db.flush()
+    return loop
+
+
+async def update_loop(db: AsyncSession, wf: Workflow, loop: WorkflowLoop, data: WorkflowLoopUpdate) -> WorkflowLoop:
+    fields = data.model_dump(exclude_unset=True)
+    for key in ("name", "entry_stage_id", "check_stage_id", "max_iterations", "on_exhausted", "carry_feedback"):
+        if key in fields and fields[key] is None:
+            fields.pop(key)  # not nullable — null means "leave as is"
+    if "entry_stage_id" in fields or "check_stage_id" in fields:
+        await _validate_loop(db, wf, fields.get("entry_stage_id", loop.entry_stage_id),
+                             fields.get("check_stage_id", loop.check_stage_id), loop_id=loop.id)
+    if "goal" in fields:
+        fields["goal"] = _clean_text(fields["goal"])
+    if "name" in fields:
+        fields["name"] = fields["name"].strip()
+    for key, value in fields.items():
+        setattr(loop, key, value)
+    await db.flush()
+    return loop
+
+
+async def delete_loop(db: AsyncSession, loop: WorkflowLoop) -> None:
+    await db.delete(loop)
+    await db.flush()
+
+
+async def _validate_loop(db: AsyncSession, wf: Workflow, entry_id: str, check_id: str, loop_id: str | None) -> None:
+    ids = set((await db.execute(
+        select(WorkflowStage.id).where(WorkflowStage.workflow_id == wf.id)
+    )).scalars())
+    if entry_id not in ids or check_id not in ids:
+        raise HTTPException(400, "A loop's start and check stages must be stages in this workflow")
+    q = select(WorkflowLoop.name).where(WorkflowLoop.workflow_id == wf.id, WorkflowLoop.check_stage_id == check_id)
+    if loop_id:
+        q = q.where(WorkflowLoop.id != loop_id)
+    taken = (await db.execute(q)).scalar_one_or_none()
+    if taken:
+        raise HTTPException(409, f"That stage already checks the loop '{taken}' — a stage can check one loop")
+
+
+def _clean_text(value: str | None) -> str | None:
+    value = (value or "").strip()
+    return value or None
 
 
 def _valid_role(role: str | None) -> str:

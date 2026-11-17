@@ -1,5 +1,5 @@
 import {
-  BookOpen, Bot, Building2, FileText, FolderKanban, GitBranch, Inbox, Kanban, LayoutDashboard, Plug,
+  BookOpen, Bot, Building2, FileText, FolderKanban, GitBranch, Inbox, Kanban, LayoutDashboard, Plug, Repeat,
   Settings, Users, Waypoints, Wrench, type LucideIcon,
 } from "lucide-react"
 
@@ -7,50 +7,61 @@ export interface NavItem {
   href: string
   label: string
   icon: LucideIcon
+  /** One plain sentence: what you do on this page (sidebar tooltip, command palette) */
+  hint: string
   keywords?: string
   badge?: "attention"
   adminOnly?: boolean
 }
 
 export interface NavGroup {
+  /** Empty for the unlabeled top group */
   label: string
   items: NavItem[]
 }
 
 // One source for the sidebar, the top bar and the command palette.
+// Order follows the work: see what needs you → plan and track work →
+// build how engineers work → what they know → wiring and admin.
 export const NAV: NavGroup[] = [
   {
-    label: "Workspace",
+    label: "",
     items: [
-      { href: "/home", label: "Home", icon: LayoutDashboard, keywords: "dashboard overview" },
-      { href: "/projects", label: "Projects", icon: FolderKanban, keywords: "repo tasks prd" },
-      { href: "/board", label: "Board", icon: Kanban, keywords: "kanban tasks" },
-      { href: "/attention", label: "Attention", icon: Inbox, keywords: "approvals gates blocked inbox", badge: "attention" },
+      { href: "/home", label: "Home", icon: LayoutDashboard, hint: "What is running now, what waits on you, and this week in numbers.", keywords: "dashboard overview" },
+      { href: "/attention", label: "Attention", icon: Inbox, hint: "Approvals, manual checkpoints, blocked runs and open questions waiting on a person.", keywords: "approvals gates blocked inbox", badge: "attention" },
     ],
   },
   {
-    label: "Plan",
+    label: "Work",
     items: [
-      { href: "/prds", label: "PRDs", icon: FileText, keywords: "requirements product spec" },
-      { href: "/knowledge", label: "Knowledge", icon: BookOpen, keywords: "decisions adr patterns glossary runbooks conventions wiki" },
-      { href: "/map", label: "Map", icon: Waypoints, keywords: "graph knowledge map wikilinks backlinks obsidian" },
+      { href: "/projects", label: "Projects", icon: FolderKanban, hint: "Repositories and their tasks. Start here to give engineers work.", keywords: "repo tasks prd" },
+      { href: "/board", label: "Board", icon: Kanban, hint: "Every task as a card, in a lane for its current stage.", keywords: "kanban tasks" },
+      { href: "/prds", label: "PRDs", icon: FileText, hint: "Requirements documents that Gravel turns into tasks.", keywords: "requirements product spec" },
     ],
   },
   {
-    label: "Configure",
+    label: "Build",
     items: [
-      { href: "/workflows", label: "Workflows", icon: GitBranch, keywords: "stages pipeline templates roles" },
-      { href: "/engineers", label: "Engineers", icon: Bot, keywords: "agents runtimes containers" },
-      { href: "/harnesses", label: "Harnesses", icon: Wrench, keywords: "subagents routing test gate tools turns agent harness" },
-      { href: "/integrations", label: "Integrations", icon: Plug, keywords: "github gitlab deploy aws" },
+      { href: "/workflows", label: "Workflows", icon: GitBranch, hint: "Design the stages a task moves through, on a canvas.", keywords: "stages pipeline templates roles canvas" },
+      { href: "/loops", label: "Loops", icon: Repeat, hint: "Loop engineering: bounded work → check → repeat cycles with exit conditions.", keywords: "loop engineering iterate retry until green exit condition passes budget" },
+      { href: "/engineers", label: "Engineers", icon: Bot, hint: "The AI workers that run stages: containers, local runners and AI accounts.", keywords: "agents runtimes containers runners" },
+      { href: "/harnesses", label: "Harnesses", icon: Wrench, hint: "Subagents, routing, test gates and limits around each agent run.", keywords: "subagents routing test gate tools turns agent harness" },
     ],
   },
   {
-    label: "Admin",
+    label: "Knowledge",
     items: [
-      { href: "/organizations", label: "Organization", icon: Building2, keywords: "members tags branding" },
-      { href: "/users", label: "Team", icon: Users, keywords: "users roles invite", adminOnly: true },
-      { href: "/settings", label: "Settings", icon: Settings, keywords: "appearance theme api keys models" },
+      { href: "/knowledge", label: "Knowledge", icon: BookOpen, hint: "Decisions, patterns and runbooks your engineers read before they work.", keywords: "decisions adr patterns glossary runbooks conventions wiki" },
+      { href: "/map", label: "Map", icon: Waypoints, hint: "How knowledge, tasks and code link to each other, as a graph.", keywords: "graph knowledge map wikilinks backlinks obsidian" },
+    ],
+  },
+  {
+    label: "Manage",
+    items: [
+      { href: "/integrations", label: "Integrations", icon: Plug, hint: "Connect GitHub and deploy targets; see what engineers may do with them.", keywords: "github gitlab deploy aws connect" },
+      { href: "/organizations", label: "Organization", icon: Building2, hint: "Members, tags and branding for this organization.", keywords: "members tags branding" },
+      { href: "/users", label: "Team", icon: Users, hint: "Invite people and set their roles.", keywords: "users roles invite", adminOnly: true },
+      { href: "/settings", label: "Settings", icon: Settings, hint: "Your appearance, API keys and models.", keywords: "appearance theme api keys models" },
     ],
   },
 ]

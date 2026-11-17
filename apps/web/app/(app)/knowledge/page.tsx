@@ -261,6 +261,7 @@ function Knowledge() {
       <PageHeader
         icon={<Library className="h-4 w-4" />}
         title="Knowledge"
+        help="knowledge"
         description="Decisions, patterns, glossary, runbooks, conventions and wiki pages that ground every engineer run."
         actions={
           <>

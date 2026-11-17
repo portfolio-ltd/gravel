@@ -25,7 +25,7 @@ export function useCreateGitIntegration() {
 export function useUpdateGitIntegration() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; access_token?: string; is_active?: boolean }) =>
+    mutationFn: ({ id, ...data }: { id: string; name?: string; access_token?: string; default_branch?: string; base_url?: string; is_active?: boolean }) =>
       apiFetch<GitIntegration>(`/api/integrations/git/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["integrations", "git"] }),
   })

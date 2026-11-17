@@ -1,4 +1,6 @@
 import * as React from "react"
+import { HelpHint } from "@/components/ui/tooltip"
+import type { GlossaryKey } from "@/lib/glossary"
 import { cn } from "@/lib/utils"
 
 /** Standard page frame: scrollable, centered, consistent gutters. */
@@ -12,9 +14,11 @@ export function Page({ children, className, wide }: { children: React.ReactNode;
   )
 }
 
-export function PageHeader({ title, description, icon, actions, className }: {
+export function PageHeader({ title, description, icon, actions, help, className }: {
   title: React.ReactNode
   description?: React.ReactNode
+  /** Glossary term explained by a (?) next to the title */
+  help?: GlossaryKey
   icon?: React.ReactNode
   actions?: React.ReactNode
   className?: string
@@ -28,7 +32,10 @@ export function PageHeader({ title, description, icon, actions, className }: {
           </div>
         )}
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+            {help && <HelpHint term={help} side="bottom" />}
+          </div>
           {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
         </div>
       </div>

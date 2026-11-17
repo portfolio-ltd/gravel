@@ -72,7 +72,9 @@ export default function CommandPalette({ open, onOpenChange }: { open: boolean; 
             .filter((n) => !n.adminOnly || user?.role === "admin")
             .map((n) => (
               <Command.Item key={n.href} value={`${n.label} ${n.keywords ?? ""}`} onSelect={() => run(() => router.push(n.href))} className={item}>
-                <n.icon className="h-4 w-4 text-muted-foreground" /> {n.label}
+                <n.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="shrink-0">{n.label}</span>
+                <span className="hidden min-w-0 truncate text-xs text-muted-foreground sm:inline">{n.hint}</span>
               </Command.Item>
             ))}
         </Command.Group>

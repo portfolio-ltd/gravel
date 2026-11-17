@@ -128,6 +128,7 @@ export default function HarnessesPage() {
       <PageHeader
         icon={<Wrench className="h-4 w-4" />}
         title="Agent harnesses"
+        help="harness"
         description="How a run is wrapped: the subagents it may delegate to, how work is routed between them, the test gate, and the executor's turn and tool limits."
         actions={newMenu}
       />

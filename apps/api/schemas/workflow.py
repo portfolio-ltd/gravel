@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class WorkflowStageCreate(BaseModel):
@@ -57,6 +58,49 @@ class WorkflowStageOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+LoopOnExhausted = Literal["ask_human", "proceed"]
+
+
+class WorkflowLoopCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    goal: str | None = None
+    entry_stage_id: str
+    check_stage_id: str
+    max_iterations: int = Field(default=3, ge=1, le=25)
+    max_cost_usd: float | None = Field(default=None, gt=0)
+    on_exhausted: LoopOnExhausted = "ask_human"
+    carry_feedback: bool = True
+
+
+class WorkflowLoopUpdate(BaseModel):
+    # Apply with model_dump(exclude_unset=True): an explicit null clears goal / max_cost_usd
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    goal: str | None = None
+    entry_stage_id: str | None = None
+    check_stage_id: str | None = None
+    max_iterations: int | None = Field(default=None, ge=1, le=25)
+    max_cost_usd: float | None = Field(default=None, gt=0)
+    on_exhausted: LoopOnExhausted | None = None
+    carry_feedback: bool | None = None
+
+
+class WorkflowLoopOut(BaseModel):
+    id: str
+    workflow_id: str
+    name: str
+    goal: str | None
+    entry_stage_id: str
+    check_stage_id: str
+    max_iterations: int
+    max_cost_usd: float | None
+    on_exhausted: str
+    carry_feedback: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class WorkflowCreate(BaseModel):
     name: str
     description: str | None = None
@@ -79,6 +123,7 @@ class WorkflowOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     stages: list[WorkflowStageOut] = []
+    loops: list[WorkflowLoopOut] = []
 
     model_config = {"from_attributes": True}
 

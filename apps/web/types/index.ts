@@ -234,6 +234,9 @@ export interface TaskRun {
   phase: TaskRunPhase
   workflow_stage_id: string | null
   attempt_number: number
+  /** The workflow loop this run belongs to, and which pass of the round it is */
+  loop_id?: string | null
+  loop_iteration?: number | null
   harness_id?: string | null
   outcome: TaskRunOutcome | null
   blocking_reason: string | null
@@ -460,6 +463,37 @@ export interface WorkflowStage {
   updated_at: string
 }
 
+export type LoopOnExhausted = "ask_human" | "proceed"
+
+/** Loop engineering: a bounded cycle from a start stage to a check stage */
+export interface WorkflowLoop {
+  id: string
+  workflow_id: string
+  name: string
+  /** Plain-language exit condition the check stage judges against */
+  goal: string | null
+  entry_stage_id: string
+  check_stage_id: string
+  max_iterations: number
+  /** Estimated spend cap for one round; null = no cap */
+  max_cost_usd: number | null
+  on_exhausted: LoopOnExhausted
+  carry_feedback: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkflowLoopCreate {
+  name: string
+  goal?: string | null
+  entry_stage_id: string
+  check_stage_id: string
+  max_iterations?: number
+  max_cost_usd?: number | null
+  on_exhausted?: LoopOnExhausted
+  carry_feedback?: boolean
+}
+
 export interface Workflow {
   id: string
   owner_id: string
@@ -469,6 +503,7 @@ export interface Workflow {
   created_at: string
   updated_at: string
   stages: WorkflowStage[]
+  loops: WorkflowLoop[]
 }
 
 export interface WorkflowStageCreate {
@@ -709,12 +744,21 @@ export interface WorkflowTemplateStage {
   max_rework_attempts: number
 }
 
+export interface WorkflowTemplateLoop {
+  name: string
+  entry: string
+  check: string
+  goal: string
+  max_iterations: number
+}
+
 export interface WorkflowTemplate {
   key: string
   name: string
   description: string
   recommended: boolean
   stages: WorkflowTemplateStage[]
+  loops?: WorkflowTemplateLoop[]
 }
 
 export interface Meta {

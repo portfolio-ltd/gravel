@@ -11,6 +11,8 @@ import { useAttentionTasks } from "@/hooks/useBoard"
 import OrgSwitcher from "@/components/OrgSwitcher"
 import CommandPalette from "@/components/shell/CommandPalette"
 import { BrandMark, NavGroups, SearchButton, ThemeToggle, UserMenu } from "@/components/shell/ShellParts"
+import { Tooltip } from "@/components/ui/tooltip"
+import SetupGuide from "@/components/shell/SetupGuide"
 import { NAV, isActive } from "@/lib/nav"
 import { cn } from "@/lib/utils"
 
@@ -47,6 +49,7 @@ function VerifyEmailBanner() {
 
 function AttentionBell({ count }: { count: number }) {
   return (
+    <Tooltip side="bottom" content={count ? `${count} task${count === 1 ? "" : "s"} waiting on a person` : "Nothing waits on you"}>
     <Link
       href="/attention"
       aria-label={`Attention${count ? ` (${count})` : ""}`}
@@ -55,6 +58,7 @@ function AttentionBell({ count }: { count: number }) {
       <Bell className="h-4 w-4" />
       {count > 0 && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive" />}
     </Link>
+    </Tooltip>
   )
 }
 
@@ -99,7 +103,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (prefs.navLayout === "topbar") {
     const flat = NAV.flatMap((g) => g.items).filter((i) => !i.adminOnly || user?.role === "admin")
-    const primary = flat.filter((i) => ["Workspace", "Plan"].includes(NAV.find((g) => g.items.includes(i))!.label))
+    const primary = flat.filter((i) => NAV.slice(0, 2).some((g) => g.items.includes(i)))
     const secondary = flat.filter((i) => !primary.includes(i))
     return (
       <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -113,8 +117,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             {[...primary, ...secondary].map((item) => {
               const active = isActive(pathname, item.href)
               return (
+                <Tooltip key={item.href} side="bottom" content={<><span className="block font-semibold">{item.label}</span><span className="text-muted-foreground">{item.hint}</span></>}>
                 <Link
-                  key={item.href}
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
@@ -130,6 +134,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     </span>
                   )}
                 </Link>
+                </Tooltip>
               )
             })}
           </nav>
@@ -158,6 +163,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className={cn("flex h-14 items-center", collapsed ? "justify-center" : "justify-between px-4")}>
           <BrandMark collapsed={collapsed} />
           {!collapsed && (
+            <Tooltip content="Collapse sidebar" side="right">
             <button
               onClick={() => update({ sidebarCollapsed: true })}
               aria-label="Collapse sidebar"
@@ -165,6 +171,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             >
               <PanelLeftClose className="h-4 w-4" />
             </button>
+            </Tooltip>
           )}
         </div>
         <div className={cn("space-y-2 pb-3", collapsed ? "flex flex-col items-center px-2" : "px-3")}>
@@ -174,16 +181,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className={cn("flex-1 overflow-y-auto pb-4", collapsed ? "px-2" : "px-3")}>
           <NavGroups collapsed={collapsed} attentionCount={attentionCount} />
         </div>
+        {!collapsed && <div className="px-3 pb-3"><SetupGuide /></div>}
         <div className={cn("space-y-1 border-t border-sidebar-border p-2", collapsed && "flex flex-col items-center")}>
           {collapsed ? (
             <>
-              <button
-                onClick={() => update({ sidebarCollapsed: false })}
-                aria-label="Expand sidebar"
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-              >
-                <PanelLeftOpen className="h-4 w-4" />
-              </button>
+              <Tooltip content="Expand sidebar" side="right">
+                <button
+                  onClick={() => update({ sidebarCollapsed: false })}
+                  aria-label="Expand sidebar"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                </button>
+              </Tooltip>
               <ThemeToggle />
               <UserMenu compact align="start" />
             </>
