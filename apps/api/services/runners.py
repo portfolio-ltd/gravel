@@ -148,6 +148,12 @@ async def has_local_runner(db: AsyncSession, user_id: str) -> bool:
     ).limit(1))).first() is not None
 
 
+def prefers_runner(user: User | None) -> bool:
+    """The person chose "run on my machine" (preferences.runOn, set on Home's first-run box):
+    their runs wait for their `gravel work` runner and are never executed on the server."""
+    return bool(user) and (user.preferences or {}).get("runOn") == "machine"
+
+
 async def llm_keys(db: AsyncSession, user: User | None) -> dict:
     """The user's provider keys, plus {"runner": user_id} when a local runner of theirs is online."""
     from services.users import get_plain_keys

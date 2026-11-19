@@ -6,6 +6,22 @@ All notable changes to Gravel are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Simpler navigation: the sidebar and top bar show Home, Projects, Knowledge and
+  Settings; Attention, Board, PRDs, Map, Workflows, Loops, Engineers, Harnesses,
+  Integrations, Organization and Team sit behind a "More" toggle that stays open
+  while you are on one of those pages. The command palette still lists everything.
+  The sidebar setup checklist is gone
+- First run: with no projects, Home shows one box — what to build, an optional
+  GitHub repository, and who does the work (your machine, an API key, or a
+  simulated demo). Start creates the project with the recommended workflow, adds
+  the task and starts it. Afterwards Home says who will do the work and shows the
+  runner commands while it waits for your machine
+- "On my machine" is a preference (`runOn`): your runs wait for your `gravel work`
+  runner and are never executed or simulated on the server, even before a runner
+  has ever connected. `POST …/tasks/{id}/start` reports `executor: "runner_wait"`
+
 ### Added
 
 - Loop engineering. A workflow can define loops: a start stage, a check stage,

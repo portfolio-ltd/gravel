@@ -177,3 +177,21 @@ async def test_restarting_on_the_same_machine_retires_the_old_runner(client: Asy
         assert (await db.get(EngineerRuntime, elsewhere["runtime_id"])).is_active
     old = {"Authorization": f"Bearer {first['runtime_token']}"}
     assert (await client.post("/api/agent/poll-next-task", headers=old)).status_code == 401
+
+
+async def test_run_on_my_machine_waits_even_without_a_runner_yet(client: AsyncClient, auth_headers: dict):
+    """Home's first-run choice: the task is queued for a runner that doesn't exist yet, not simulated."""
+    await client.put("/api/users/me/preferences", json={"preferences": {"runOn": "machine"}}, headers=auth_headers)
+    project = (await client.post("/api/projects", json={"name": "First"}, headers=auth_headers)).json()
+    task = (await client.post(f"/api/projects/{project['id']}/tasks", json={"title": "Hello"}, headers=auth_headers)).json()
+    started = await client.post(f"/api/projects/{project['id']}/tasks/{task['id']}/start", headers=auth_headers)
+    assert started.status_code == 202 and started.json()["executor"] == "runner_wait"
+    await asyncio.sleep(1.5)
+    runs = (await client.get(f"/api/tasks/{task['id']}/runs", headers=auth_headers)).json()
+    assert len(runs) == 1 and runs[0]["claimed_at"] is None and runs[0]["outcome"] is None
+
+    token = (await _token(client, auth_headers))["token"]
+    runner = await _register(client, token)
+    payload = (await client.post("/api/agent/poll-next-task",
+                                 headers={"Authorization": f"Bearer {runner['runtime_token']}"})).json()
+    assert payload["task"]["id"] == task["id"]

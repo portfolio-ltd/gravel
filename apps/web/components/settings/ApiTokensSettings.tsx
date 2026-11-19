@@ -4,8 +4,9 @@ import { useState } from "react"
 import { Check, Copy, KeyRound, Loader2, Terminal, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Field, Input, Select } from "@/components/ui/form"
+import { Field, Input, Select, Switch } from "@/components/ui/form"
 import { EmptyState, SectionCard } from "@/components/ui/page"
+import { usePreferences } from "@/contexts/PreferencesContext"
 import { useApiTokens, useCreateApiToken, useRevokeApiToken } from "@/hooks/useApiTokens"
 import { formatRelativeTime } from "@/lib/utils"
 
@@ -24,6 +25,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 
 /** Personal API tokens for the gravel CLI and editor extensions, plus how to run tasks on your own machine. */
 export default function ApiTokensSettings() {
+  const { prefs, update } = usePreferences()
   const { data: tokens = [], isLoading } = useApiTokens()
   const create = useCreateApiToken()
   const revoke = useRevokeApiToken()
@@ -70,6 +72,14 @@ export default function ApiTokensSettings() {
         <p className="mt-3 text-[11px] text-muted-foreground">
           While it runs, your projects&apos; stages, PRD parsing and code-graph summaries go to it when you have no key for the model. It takes runs only from projects you own unless you pass <code className="font-mono">--team</code>.
         </p>
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2.5">
+          <div>
+            <p className="text-xs font-medium">Always run my work on my machine</p>
+            <p className="text-[11px] text-muted-foreground">Queued work waits for your runner and never runs on the server, even if you saved an API key.</p>
+          </div>
+          <Switch checked={prefs.runOn === "machine"} onChange={(v) => update({ runOn: v ? "machine" : null })}
+            label="Always run my work on my machine" />
+        </div>
       </SectionCard>
 
       <SectionCard

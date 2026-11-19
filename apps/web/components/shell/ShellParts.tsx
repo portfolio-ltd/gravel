@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { ChevronsUpDown, Folder, Key, Laptop, LogOut, Moon, Palette, Search, Shield, Sun, Zap } from "lucide-react"
+import { ChevronRight, ChevronsUpDown, Folder, Key, Laptop, LogOut, Moon, Palette, Search, Shield, Sun, Zap } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useOrg } from "@/contexts/OrgContext"
 import { usePreferences } from "@/contexts/PreferencesContext"
@@ -13,7 +13,7 @@ import { Tooltip } from "@/components/ui/tooltip"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown"
-import { NAV, isActive, type NavItem } from "@/lib/nav"
+import { NAV, isActive, isMorePage, type NavItem } from "@/lib/nav"
 import { RECENT_EVENT, orderRecent, readRecentIds } from "@/lib/recentProjects"
 import { cn, getInitials } from "@/lib/utils"
 
@@ -132,32 +132,55 @@ export function NavGroups({ collapsed, attentionCount, onNavigate }: {
   collapsed?: boolean; attentionCount: number; onNavigate?: () => void
 }) {
   const { user } = useAuth()
+  const pathname = usePathname()
+  const { prefs, update } = usePreferences()
+  // "More" stays open while you're on one of its pages, so the current page is always visible
+  const moreOpen = prefs.navMore || isMorePage(pathname)
+  const visible = (group: (typeof NAV)[number]) => group.items.filter((i) => !i.adminOnly || user?.role === "admin")
+  const renderGroup = (group: (typeof NAV)[number]) => {
+    const items = visible(group)
+    if (!items.length) return null
+    return (
+      <div key={group.label} className={cn("space-y-0.5", collapsed && "flex flex-col items-center")}>
+        {!collapsed && group.label && (
+          <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+            {group.label}
+          </p>
+        )}
+        {collapsed && group.label && <div className="mx-auto mb-1 h-px w-5 bg-sidebar-border" aria-hidden />}
+        {items.map((item) => (
+          <NavLink
+            key={item.href}
+            item={item}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+            badge={item.badge === "attention" ? attentionCount : undefined}
+          />
+        ))}
+      </div>
+    )
+  }
   return (
     <nav className="space-y-4">
-      {NAV.map((group) => {
-        const items = group.items.filter((i) => !i.adminOnly || user?.role === "admin")
-        if (!items.length) return null
-        return (
-          <div key={group.label} className={cn("space-y-0.5", collapsed && "flex flex-col items-center")}>
-            {!collapsed && group.label && (
-              <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                {group.label}
-              </p>
+      {NAV.filter((g) => !g.more).map(renderGroup)}
+      {!collapsed && <RecentProjects onNavigate={onNavigate} />}
+      <div className={cn(collapsed && "flex flex-col items-center")}>
+        <Tooltip side="right" content={moreOpen ? "Hide the advanced pages" : "Board, PRDs, workflows, loops, engineers, harnesses, integrations and team"}>
+          <button
+            type="button"
+            onClick={() => update({ navMore: !moreOpen })}
+            aria-expanded={moreOpen}
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/75 transition-colors hover:bg-accent hover:text-foreground",
+              collapsed ? "h-9 w-9 justify-center" : "h-8 w-full px-2.5",
             )}
-            {collapsed && group.label && <div className="mx-auto mb-1 h-px w-5 bg-sidebar-border" aria-hidden />}
-            {items.map((item) => (
-              <NavLink
-                key={item.href}
-                item={item}
-                collapsed={collapsed}
-                onNavigate={onNavigate}
-                badge={item.badge === "attention" ? attentionCount : undefined}
-              />
-            ))}
-            {group.label === "Work" && !collapsed && <div className="pt-3"><RecentProjects onNavigate={onNavigate} /></div>}
-          </div>
-        )
-      })}
+          >
+            <ChevronRight className={cn("h-4 w-4 shrink-0 transition-transform", moreOpen && "rotate-90")} />
+            {!collapsed && <span>More</span>}
+          </button>
+        </Tooltip>
+      </div>
+      {moreOpen && NAV.filter((g) => g.more).map(renderGroup)}
     </nav>
   )
 }
