@@ -38,6 +38,10 @@ async def get_current_runtime(
     runtime = result.scalar_one_or_none()
     if not runtime:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid runtime token")
+    if runtime.owner_user_id:  # a local runner acts for a person: it stops working when they are deactivated
+        owner = await get_user_by_id(db, runtime.owner_user_id)
+        if not owner or not owner.is_active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid runtime token")
     return runtime
 
 

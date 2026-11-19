@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils"
 type UserRole = "admin" | "developer" | "qa" | "product" | "devops"
 
 const ROLES: { value: UserRole; label: string; desc: string; color: string }[] = [
-  { value: "admin",     label: "Admin",     desc: "Full access + user management",    color: "border-rose-300 bg-rose-50 text-rose-700" },
   { value: "developer", label: "Developer", desc: "Build tasks, review code",          color: "border-blue-300 bg-blue-50 text-blue-700" },
   { value: "qa",        label: "QA",        desc: "Test & approve tasks",              color: "border-amber-300 bg-amber-50 text-amber-700" },
   { value: "product",   label: "Product",   desc: "Create projects, upload PRDs",      color: "border-purple-300 bg-purple-50 text-purple-700" },
