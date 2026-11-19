@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Bell, Menu, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react"
+import { Bell, ChevronRight, Menu, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useOrg } from "@/contexts/OrgContext"
 import { usePreferences } from "@/contexts/PreferencesContext"
@@ -12,8 +12,7 @@ import OrgSwitcher from "@/components/OrgSwitcher"
 import CommandPalette from "@/components/shell/CommandPalette"
 import { BrandMark, NavGroups, SearchButton, ThemeToggle, UserMenu } from "@/components/shell/ShellParts"
 import { Tooltip } from "@/components/ui/tooltip"
-import SetupGuide from "@/components/shell/SetupGuide"
-import { NAV, isActive } from "@/lib/nav"
+import { NAV, isActive, isMorePage } from "@/lib/nav"
 import { cn } from "@/lib/utils"
 
 function VerifyEmailBanner() {
@@ -102,9 +101,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   )
 
   if (prefs.navLayout === "topbar") {
-    const flat = NAV.flatMap((g) => g.items).filter((i) => !i.adminOnly || user?.role === "admin")
-    const primary = flat.filter((i) => NAV.slice(0, 2).some((g) => g.items.includes(i)))
-    const secondary = flat.filter((i) => !primary.includes(i))
+    const allowed = (i: (typeof NAV)[number]["items"][number]) => !i.adminOnly || user?.role === "admin"
+    const primary = NAV.filter((g) => !g.more).flatMap((g) => g.items).filter(allowed)
+    const moreOpen = prefs.navMore || isMorePage(pathname)
+    const secondary = moreOpen ? NAV.filter((g) => g.more).flatMap((g) => g.items).filter(allowed) : []
     return (
       <div className="flex h-screen flex-col overflow-hidden bg-background">
         <header className="z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur">
@@ -137,6 +137,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </Tooltip>
               )
             })}
+            <Tooltip side="bottom" content={moreOpen ? "Hide the advanced pages" : "Board, PRDs, workflows, loops, engineers, harnesses, integrations and team"}>
+              <button
+                type="button"
+                onClick={() => update({ navMore: !moreOpen })}
+                aria-expanded={moreOpen}
+                className="flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <ChevronRight className={cn("h-4 w-4 transition-transform", moreOpen && "rotate-180")} />
+                <span className="hidden lg:inline">{moreOpen ? "Less" : "More"}</span>
+              </button>
+            </Tooltip>
           </nav>
           <div className="flex-1" />
           <SearchButton onClick={() => setPaletteOpen(true)} className="hidden w-52 sm:flex" />
@@ -181,7 +192,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className={cn("flex-1 overflow-y-auto pb-4", collapsed ? "px-2" : "px-3")}>
           <NavGroups collapsed={collapsed} attentionCount={attentionCount} />
         </div>
-        {!collapsed && <div className="px-3 pb-3"><SetupGuide /></div>}
         <div className={cn("space-y-1 border-t border-sidebar-border p-2", collapsed && "flex flex-col items-center")}>
           {collapsed ? (
             <>

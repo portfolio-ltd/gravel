@@ -28,6 +28,11 @@ export interface Preferences {
   font: FontChoice
   navLayout: NavLayout
   sidebarCollapsed: boolean
+  /** Sidebar "More" section (Board, Workflows, Engineers…) is open */
+  navMore: boolean
+  /** Where AI work runs: "machine" = wait for my `gravel work` runner, never the server.
+   *  The API reads this (services/agent.py drain). null = server, with a key or simulated. */
+  runOn: "machine" | null
   reduceMotion: boolean
   /** Preselected model for new projects; null = the server's DEFAULT_MODEL */
   defaultModel: string | null
@@ -80,6 +85,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   font: "inter",
   navLayout: "sidebar",
   sidebarCollapsed: false,
+  navMore: false,
+  runOn: null,
   reduceMotion: false,
   defaultModel: null,
   dictationLang: DEFAULT_DICTATION_LANGUAGE,

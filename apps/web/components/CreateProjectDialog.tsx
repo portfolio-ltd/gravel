@@ -13,6 +13,7 @@ import { useUploadFile, useParseAgent } from "@/hooks/useAgent"
 import { useMeta } from "@/hooks/useSdlc"
 import { usePreferences } from "@/contexts/PreferencesContext"
 import { toast } from "sonner"
+import { repoUrlOf } from "@/lib/quickStart"
 import type { Project } from "@/types"
 
 /** "tpl:<template key>" | "wf:<workflow id>" | "default" */
@@ -31,14 +32,6 @@ interface CreateProjectDialogProps {
   open: boolean
   onOpenChange: (v: boolean) => void
   onCreated?: (project: Project) => void
-}
-
-/** https://github.com/owner/repo for an "owner/repo" or GitHub URL input; undefined when blank. */
-function repoUrlOf(input: string): string | undefined {
-  const v = input.trim().replace(/\.git$/, "").replace(/\/+$/, "")
-  if (!v) return undefined
-  if (/^https?:\/\//.test(v)) return v
-  return `https://github.com/${v.replace(/^github\.com\//, "")}`
 }
 
 export default function CreateProjectDialog({ open, onOpenChange, onCreated }: CreateProjectDialogProps) {

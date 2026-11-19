@@ -101,10 +101,11 @@ async def drain_project(project_id: str, user_id: str) -> None:
 
                 user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
                 keys = await runners.llm_keys(db, user)
-                # Keyless with a local runner set up: the run waits for that runner
-                # (it claims it when it comes online) instead of simulated output.
-                if not any(keys.get(p) for p in ("anthropic", "openai", "groq")) \
-                        and await runners.has_local_runner(db, user_id):
+                # "Run on my machine", or keyless with a local runner set up: the run waits
+                # for that runner (it claims it when it comes online) instead of running here.
+                if runners.prefers_runner(user) or (
+                        not any(keys.get(p) for p in ("anthropic", "openai", "groq"))
+                        and await runners.has_local_runner(db, user_id)):
                     break
 
                 # NOTE: the drain deliberately ignores per-stage engineer

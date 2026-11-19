@@ -3,21 +3,21 @@
 import { useState } from "react"
 import Link from "next/link"
 import {
-  ArrowDown, ArrowRight, ArrowUp, BookOpen, Check, Eye, EyeOff, FolderKanban, GitBranch, Inbox, Key,
-  Kanban, LayoutGrid, Plus, Settings2, Sparkles,
+  ArrowDown, ArrowRight, ArrowUp, BookOpen, Check, Eye, EyeOff, FolderKanban, Inbox,
+  Kanban, LayoutGrid, Plus, Settings2,
 } from "lucide-react"
 import { format, formatDistanceToNow } from "date-fns"
 import { useAuth } from "@/contexts/AuthContext"
 import { usePreferences } from "@/contexts/PreferencesContext"
 import { useAttentionTasks, useBoard, useRunningRuns } from "@/hooks/useBoard"
 import { useProjects } from "@/hooks/useProjects"
-import { useApiKeys } from "@/hooks/useUsers"
 import { useKnowledge } from "@/hooks/useSdlc"
-import { useWorkflows } from "@/hooks/useWorkflows"
 import WorkspaceMetrics from "@/components/WorkspaceMetrics"
 import EngineerAvatar from "@/components/EngineerAvatar"
 import TaskOpener from "@/components/TaskOpener"
 import AskBox from "@/components/home/AskBox"
+import ConnectEngineer from "@/components/home/ConnectEngineer"
+import QuickStart from "@/components/home/QuickStart"
 import RunningNow from "@/components/home/RunningNow"
 import GateActions from "@/components/sdlc/GateActions"
 import { Button } from "@/components/ui/button"
@@ -183,46 +183,6 @@ function KnowledgeWidget() {
   )
 }
 
-function GettingStarted() {
-  const { user } = useAuth()
-  const { data: projects } = useProjects()
-  const { data: keys } = useApiKeys(user?.id)
-  const { data: workflows } = useWorkflows()
-  const steps = [
-    { done: !!(keys && (keys.anthropic || keys.openai || keys.groq)), label: "Add an LLM API key", hint: "Without one, engineers run in simulated mode.", href: "/settings?tab=models", icon: Key },
-    { done: (workflows ?? []).length > 0, label: "Pick a workflow", hint: "Start from the spec-driven template.", href: "/workflows", icon: GitBranch },
-    { done: (projects ?? []).length > 0, label: "Create a project", hint: "Upload a PRD or import GitHub issues.", href: "/projects?new=1", icon: Plus },
-  ]
-  if (steps.every((s) => s.done)) return null
-  return (
-    <section className="surface mb-6 overflow-hidden">
-      <div className="flex items-center gap-2 border-b bg-glow px-4 py-3">
-        <Sparkles className="h-4 w-4 text-primary" />
-        <h2 className="text-sm font-semibold">Get set up</h2>
-        <span className="ml-auto text-xs text-muted-foreground">{steps.filter((s) => s.done).length}/{steps.length} done</span>
-      </div>
-      <ol className="grid gap-px bg-border sm:grid-cols-3">
-        {steps.map((s, i) => (
-          <li key={s.label} className="bg-card">
-            <Link href={s.href} className="flex h-full items-start gap-3 p-4 transition-colors hover:bg-accent/60">
-              <span className={cn(
-                "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                s.done ? "bg-success text-success-foreground" : "bg-muted text-muted-foreground",
-              )}>
-                {s.done ? <Check className="h-3.5 w-3.5" /> : i + 1}
-              </span>
-              <div>
-                <p className={cn("text-sm font-medium", s.done && "text-muted-foreground line-through")}>{s.label}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{s.hint}</p>
-              </div>
-            </Link>
-          </li>
-        ))}
-      </ol>
-    </section>
-  )
-}
-
 const RENDER: Record<WidgetId, { node: (open: OpenTask) => React.ReactNode; wide?: boolean }> = {
   metrics: { node: () => <WorkspaceMetrics />, wide: true },
   attention: { node: (open) => <AttentionWidget onOpenTask={open} />, wide: true },
@@ -241,6 +201,9 @@ export default function HomePage() {
   const { data: running } = useRunningRuns()
   const inFlight = running?.filter((r) => r.state === "running").length ?? 0
   const queued = (running?.length ?? 0) - inFlight
+  const { data: projects } = useProjects()
+  // No projects yet: one box that takes a task and starts it, instead of the dashboard's tools
+  const firstRun = projects?.length === 0
   const now = new Date()
   const visible = prefs.home.widgets.filter((id): id is WidgetId => id in RENDER)
 
@@ -267,7 +230,7 @@ export default function HomePage() {
           <p className="mt-1.5 text-sm text-muted-foreground">
             {attention && running ? statusLine(attention.length, inFlight, queued) : "\u00a0"}
           </p>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className={cn("mt-4 flex flex-wrap gap-2", firstRun && "hidden")}>
             <Button variant="outline" size="sm" onClick={() => setCustomizing((v) => !v)}>
               <LayoutGrid className="h-3.5 w-3.5" /> {customizing ? "Done" : "Customize"}
             </Button>
@@ -275,10 +238,12 @@ export default function HomePage() {
             <Link href="/projects?new=1"><Button variant="outline" size="sm"><Plus className="h-3.5 w-3.5" /> New project</Button></Link>
           </div>
         </div>
-        <AskBox onOpenTask={(projectId, taskId) => setOpenTask({ projectId, taskId })} />
+        {!firstRun && <AskBox onOpenTask={(projectId, taskId) => setOpenTask({ projectId, taskId })} />}
       </div>
 
-      <GettingStarted />
+      {firstRun
+        ? <QuickStart onStarted={(projectId, taskId) => setOpenTask({ projectId, taskId })} />
+        : <ConnectEngineer className="mb-6" />}
 
       {customizing && (
         <section className="surface mb-6 p-4 animate-slide-in">
@@ -317,7 +282,7 @@ export default function HomePage() {
         </section>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className={cn("grid gap-4 lg:grid-cols-2", firstRun && "hidden")}>
         {visible.map((id) => (
           <div key={id} className={cn("min-w-0", RENDER[id].wide && "lg:col-span-2")}>
             {RENDER[id].node((projectId, taskId) => setOpenTask({ projectId, taskId }))}

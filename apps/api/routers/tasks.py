@@ -110,4 +110,6 @@ async def start(project_id: str, task_id: str, background_tasks: BackgroundTasks
     if not runtimes:
         # An existing drain for this project picks the new run up on its next loop
         background_tasks.add_task(agent_svc.drain_project, project_id, current_user.id)
-    return {"detail": "Task queued", "task_id": task.id, "executor": "runtime" if runtimes else "in_process"}
+    waits = not runtimes and runners.prefers_runner(current_user)
+    return {"detail": "Task queued", "task_id": task.id,
+            "executor": "runtime" if runtimes else "runner_wait" if waits else "in_process"}

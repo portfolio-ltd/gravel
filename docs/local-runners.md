@@ -112,7 +112,11 @@ your AI CLI, in an empty directory with no repository access
 `RUNNER_JOB_TIMEOUT_SECONDS` (240 s) for the answer.
 
 Once you have set up a runner, your key-less runs **wait** for it instead of
-producing simulated output, and start as soon as it comes online.
+producing simulated output, and start as soon as it comes online. Choosing
+**On my machine** in Home's first-run box does the same from the first task,
+before any runner has connected, and regardless of saved keys (it is stored as
+the `runOn: "machine"` preference; turn it off under **Settings → CLI & tokens →
+Always run my work on my machine** to run on the server again).
 
 The usage ledger records this work as `runner/<model>` at no cost, since your
 own subscription pays for it.
