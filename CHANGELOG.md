@@ -6,6 +6,14 @@ All notable changes to Gravel are recorded here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- Sign-up can no longer grant itself the site admin role: the first account on
+  an instance is its admin, and later sign-ups that ask for `admin` become
+  developers (admins are made under Team). The sign-up form no longer offers Admin
+- Deactivating a user now also revokes their sessions and API tokens and stops
+  their local runners; a runner token stops working when its owner is inactive
+
 ### Changed
 
 - Simpler navigation: the sidebar and top bar show Home, Projects, Knowledge and

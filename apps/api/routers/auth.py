@@ -42,6 +42,14 @@ async def signup(body: SignupRequest, background_tasks: BackgroundTasks, db: DB)
         role = UserRole(body.role)
     except ValueError:
         role = UserRole.developer
+    # Nobody signs themselves up as a site admin: the first account on an instance
+    # is its admin, and further admins are made by one (Team → role).
+    from sqlalchemy import func, select
+    first_user = (await db.execute(select(func.count()).select_from(User))).scalar_one() == 0
+    if first_user:
+        role = UserRole.admin
+    elif role == UserRole.admin:
+        role = UserRole.developer
     user = User(
         name=body.name,
         email=body.email.lower(),

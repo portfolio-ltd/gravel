@@ -28,8 +28,25 @@ async def update_user(db: AsyncSession, user: User, name: str | None, role: User
 
 
 async def deactivate_user(db: AsyncSession, user: User) -> None:
+    """Deactivate the account and everything that can act as it: sessions, API tokens, local runners."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select, update
+
+    from models.api_token import ApiToken
+    from models.engineer import EngineerRuntime
+    from models.refresh_token import RefreshToken
+    from services import runners
+
     user.is_active = False
     db.add(user)
+    await db.execute(update(RefreshToken).where(RefreshToken.user_id == user.id).values(revoked=True))
+    await db.execute(update(ApiToken).where(ApiToken.user_id == user.id, ApiToken.revoked_at.is_(None))
+                     .values(revoked_at=datetime.now(timezone.utc)))
+    for runtime in (await db.execute(select(EngineerRuntime).where(
+            EngineerRuntime.owner_user_id == user.id, EngineerRuntime.is_active.is_(True)))).scalars():
+        await runners.stop(db, runtime)
+        runtime.runtime_token_hash = None
 
 
 def _mask(key: str | None) -> str | None:
